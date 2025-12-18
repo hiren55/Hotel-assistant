@@ -1,0 +1,163 @@
+# ===========================================
+# Dependencies
+# ===========================================
+node_modules
+.pnpm-store
+
+# ===========================================
+# Build outputs
+# ===========================================
+dist
+build
+.next
+out
+*.tsbuildinfo
+
+# ===========================================
+# Testing
+# ===========================================
+coverage
+.nyc_output
+
+# ===========================================
+# Environment files - CRITICAL: Never commit secrets!
+# ===========================================
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+.env.*.local
+*.env
+
+# Keep example files
+!.env.example
+!*.env.example
+
+# ===========================================
+# Secrets and credentials
+# ===========================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+secrets/
+.secrets
+credentials.json
+service-account*.json
+*-credentials.json
+*_credentials.json
+
+# ===========================================
+# IDE and editors
+# ===========================================
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.project
+.classpath
+.settings/
+*.code-workspace
+
+# ===========================================
+# OS generated files
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ===========================================
+# Logs
+# ===========================================
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log
+
+# ===========================================
+# Turbo
+# ===========================================
+.turbo
+
+# ===========================================
+# Prisma
+# ===========================================
+prisma/*.db
+prisma/*.db-journal
+prisma/migrations/*.sql.bak
+
+# ===========================================
+# Debug
+# ===========================================
+.debug
+
+# ===========================================
+# Docker
+# ===========================================
+docker-compose.override.yml
+.docker/
+
+# ===========================================
+# Deployment
+# ===========================================
+.vercel
+.netlify
+.serverless
+
+# ===========================================
+# Temporary files
+# ===========================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# ===========================================
+# Package manager locks (keep only pnpm)
+# ===========================================
+package-lock.json
+yarn.lock
+
+# ===========================================
+# Test artifacts
+# ===========================================
+test-results/
+playwright-report/
+.playwright/
+
+# ===========================================
+# Misc
+# ===========================================
+*.pid
+*.seed
+*.pid.lock
+.cache
+.parcel-cache
+.eslintcache
+.stylelintcache
+*.tgz

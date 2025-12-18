@@ -1,0 +1,10 @@
+# Run lint-staged for code quality
+npx lint-staged
+
+# Security check: Prevent committing secrets
+# Check for common secret patterns in staged files
+if git diff --cached --name-only | xargs grep -l -E "(sk-[a-zA-Z0-9]{20,}|PRIVATE.?KEY|password\s*=\s*['\"][^'\"]+['\"]|api.?key\s*=\s*['\"][^'\"]+['\"])" 2>/dev/null | grep -v ".example" | grep -v "node_modules"; then
+  echo "ERROR: Potential secrets detected in staged files!"
+  echo "Please remove any API keys, passwords, or private keys before committing."
+  exit 1
+fi

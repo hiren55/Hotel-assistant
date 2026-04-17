@@ -1,6 +1,5 @@
 // Chat input component
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { cn } from '../../utils';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -11,36 +10,28 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
-  placeholder = 'Type your message...',
+  placeholder = 'Type your request here...',
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-focus input
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
-      inputRef.current.style.height = `${Math.min(
-        inputRef.current.scrollHeight,
-        120
-      )}px`;
+      inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
     }
   }, [message]);
 
   const handleSubmit = () => {
-    const trimmedMessage = message.trim();
-    if (trimmedMessage && !disabled) {
-      onSend(trimmedMessage);
+    const trimmed = message.trim();
+    if (trimmed && !disabled) {
+      onSend(trimmed);
       setMessage('');
-      // Reset height
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-      }
+      if (inputRef.current) inputRef.current.style.height = 'auto';
     }
   };
 
@@ -52,45 +43,39 @@ export function ChatInput({
   };
 
   return (
-    <div className="border-t border-gray-200 px-4 py-3 bg-white rounded-b-xl">
-      <div className="flex items-end gap-2">
-        <div className="flex-1 relative">
-          <textarea
-            ref={inputRef}
-            value={message}
-            onInput={(e) => setMessage((e.target as HTMLTextAreaElement).value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={disabled}
-            rows={1}
-            className={cn(
-              'w-full px-4 py-2 pr-10 border border-gray-300 rounded-2xl resize-none',
-              'text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent',
-              'placeholder:text-gray-400 max-h-[120px]',
-              disabled && 'bg-gray-50 cursor-not-allowed'
-            )}
-            aria-label="Message input"
-          />
-        </div>
+    <div className="chat-input-container">
+      <div className={`chat-input-wrapper ${disabled ? 'opacity-50' : ''}`}>
+        <button className="chat-icon-btn" style={{ marginLeft: '4px' }} disabled={disabled} aria-label="Add attachment">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        
+        <textarea
+          ref={inputRef}
+          value={message}
+          onInput={(e) => setMessage((e.target as HTMLTextAreaElement).value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          className="chat-input-field"
+          aria-label="Message input"
+        />
+
         <button
           onClick={handleSubmit}
           disabled={disabled || !message.trim()}
-          className={cn(
-            'p-2.5 rounded-full transition-colors flex-shrink-0',
-            message.trim() && !disabled
-              ? 'bg-primary text-white hover:bg-primary-dark'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-          )}
+          className="chat-send-btn"
           aria-label="Send message"
         >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: 'rotate(45deg) translate(-2px, 2px)' }}>
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
         </button>
       </div>
-      <p className="text-xs text-gray-400 mt-2 text-center">
-        Press Enter to send, Shift+Enter for new line
-      </p>
     </div>
   );
 }

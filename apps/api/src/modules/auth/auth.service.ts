@@ -7,10 +7,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SupabaseService } from '../../supabase/supabase.service';
 import { UserRole, UserStatus } from '@prisma/client';
 import { NotificationService } from '../email/notification.service';
+import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import {
   LoginDto,
   RegisterDto,
@@ -19,6 +21,7 @@ import {
   AuthResponseDto,
   TokenResponseDto,
   ForgotPasswordDto,
+  ResetPasswordDto,
   ChangePasswordDto,
 } from './dto';
 
@@ -31,72 +34,106 @@ export interface JwtPayload {
   exp?: number;
 }
 
-export interface SupabaseJwtPayload {
-  sub: string;
-  email?: string;
-  aud: string;
-  role: string;
-  iat: number;
-  exp: number;
-  user_metadata?: Record<string, unknown>;
-  app_metadata?: Record<string, unknown>;
-}
-
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly bcryptRounds: number;
+  private readonly accessTokenExpiresIn: string;
+  private readonly refreshTokenExpiresIn: string;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly supabase: SupabaseService,
+    private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
-  ) {}
+  ) {
+    this.bcryptRounds = this.configService.get<number>('security.bcryptRounds') || 12;
+    this.accessTokenExpiresIn = this.configService.get<string>('jwt.accessTokenExpiresIn') || '15m';
+    this.refreshTokenExpiresIn = this.configService.get<string>('jwt.refreshTokenExpiresIn') || '7d';
+  }
+
+  // ============================================
+  // TOKEN GENERATION
+  // ============================================
+
+  private async generateTokens(user: {
+    id: string;
+    email: string;
+    role: UserRole;
+    hotelId: string | null;
+  }): Promise<TokenResponseDto> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      hotelId: user.hotelId,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: this.accessTokenExpiresIn,
+    });
+
+    // Generate a secure random refresh token
+    const refreshToken = crypto.randomBytes(64).toString('hex');
+
+    // Parse refresh token expiry to milliseconds
+    const refreshExpiresMs = this.parseExpiryToMs(this.refreshTokenExpiresIn);
+
+    // Store refresh token in database
+    await this.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        token: refreshToken,
+        expiresAt: new Date(Date.now() + refreshExpiresMs),
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: this.parseExpiryToSeconds(this.accessTokenExpiresIn),
+      tokenType: 'Bearer',
+    };
+  }
+
+  private parseExpiryToMs(expiry: string | undefined): number {
+    if (!expiry) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
+    const match = expiry.match(/^(\d+)([smhd])$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000; // Default 7 days
+    const value = parseInt(match[1]!, 10);
+    const unit = match[2]!;
+    switch (unit) {
+      case 's': return value * 1000;
+      case 'm': return value * 60 * 1000;
+      case 'h': return value * 60 * 60 * 1000;
+      case 'd': return value * 24 * 60 * 60 * 1000;
+      default: return 7 * 24 * 60 * 60 * 1000;
+    }
+  }
+
+  private parseExpiryToSeconds(expiry: string): number {
+    return Math.floor(this.parseExpiryToMs(expiry) / 1000);
+  }
+
+  // ============================================
+  // LOGIN
+  // ============================================
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
-    // Authenticate with Supabase
-    const { user: supabaseUser, session, error } = await this.supabase.signInWithPassword(
-      dto.email.toLowerCase(),
-      dto.password,
-    );
-
-    if (error || !supabaseUser || !session) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Get or create local user record
-    let user = await this.prisma.user.findFirst({
+    // Find user by email
+    const user = await this.prisma.user.findFirst({
       where: { email: dto.email.toLowerCase() },
       include: { hotel: true },
     });
 
     if (!user) {
-      // User exists in Supabase but not locally - this shouldn't happen normally
-      // but handle gracefully by creating local record
-      const userName = String(supabaseUser.user_metadata?.name || dto.email.split('@')[0] || 'User');
-      const newUser = await this.prisma.user.create({
-        data: {
-          id: supabaseUser.id, // Use Supabase user ID
-          email: dto.email.toLowerCase(),
-          passwordHash: 'supabase-managed', // Password is managed by Supabase
-          name: userName,
-          role: UserRole.hotel_owner,
-          status: UserStatus.active,
-        },
-        include: { hotel: true },
-      });
-      user = newUser;
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    // If user was pending verification and successfully logged in via Supabase,
-    // their email has been verified - update status to active
-    if (user.status === UserStatus.pending_verification) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { status: UserStatus.active },
-      });
-      user.status = UserStatus.active;
-      this.logger.log(`User ${user.email} email verified, status updated to active`);
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     if (user.status !== UserStatus.active) {
@@ -109,6 +146,9 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
+    // Generate tokens
+    const tokens = await this.generateTokens(user);
+
     // Create audit log
     await this.createAuditLog(user.hotelId, user.id, 'login', 'user', user.id);
 
@@ -119,18 +159,18 @@ export class AuthService {
         name: user.name,
         role: user.role,
         hotelId: user.hotelId,
+        onboardingComplete: user.onboardingComplete,
       },
-      tokens: {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
-        expiresIn: session.expires_in || 3600,
-        tokenType: 'Bearer',
-      },
+      tokens,
     };
   }
 
+  // ============================================
+  // REGISTER
+  // ============================================
+
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
-    // Check if email already exists locally
+    // Check if email already exists
     const existingUser = await this.prisma.user.findFirst({
       where: { email: dto.email.toLowerCase() },
     });
@@ -149,33 +189,14 @@ export class AuthService {
       }
     }
 
-    // Register with Supabase
-    const { user: supabaseUser, session, error } = await this.supabase.signUp(
-      dto.email.toLowerCase(),
-      dto.password,
-      {
-        name: dto.name,
-        role: dto.hotelId ? UserRole.hotel_staff : UserRole.hotel_owner,
-      },
-    );
+    // Hash password
+    const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
 
-    if (error) {
-      if (error.message.includes('already registered')) {
-        throw new ConflictException('Email already registered');
-      }
-      throw new BadRequestException(error.message);
-    }
-
-    if (!supabaseUser) {
-      throw new BadRequestException('Failed to create user');
-    }
-
-    // Create local user record
+    // Create user
     const user = await this.prisma.user.create({
       data: {
-        id: supabaseUser.id, // Use Supabase user ID
         email: dto.email.toLowerCase(),
-        passwordHash: 'supabase-managed',
+        passwordHash,
         name: dto.name,
         role: dto.hotelId ? UserRole.hotel_staff : UserRole.hotel_owner,
         hotelId: dto.hotelId || null,
@@ -183,30 +204,14 @@ export class AuthService {
       },
     });
 
+    // Generate tokens
+    const tokens = await this.generateTokens(user);
+
     // Create audit log
     await this.createAuditLog(user.hotelId, user.id, 'register', 'user', user.id);
 
     // Send welcome email (non-blocking)
     this.sendWelcomeEmailAsync(user.name, user.email, user.hotelId);
-
-    // If session is null, email confirmation is required
-    if (!session) {
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          hotelId: user.hotelId,
-        },
-        tokens: {
-          accessToken: '',
-          refreshToken: '',
-          expiresIn: 0,
-          tokenType: 'Bearer',
-        },
-      };
-    }
 
     return {
       user: {
@@ -215,15 +220,15 @@ export class AuthService {
         name: user.name,
         role: user.role,
         hotelId: user.hotelId,
+        onboardingComplete: user.onboardingComplete,
       },
-      tokens: {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
-        expiresIn: session.expires_in || 3600,
-        tokenType: 'Bearer',
-      },
+      tokens,
     };
   }
+
+  // ============================================
+  // REGISTER HOTEL OWNER
+  // ============================================
 
   async registerHotelOwner(dto: RegisterHotelOwnerDto): Promise<AuthResponseDto> {
     // Check if email already exists
@@ -232,106 +237,50 @@ export class AuthService {
     });
 
     if (existingUser) {
-      // If user exists but is pending verification, allow re-registration
-      // (user may have not received verification email)
-      if (existingUser.status !== UserStatus.pending_verification) {
-        throw new ConflictException('Email already registered');
-      }
-      // Update the existing pending user instead of creating new
-      this.logger.log(`Updating existing pending verification user: ${existingUser.email}`);
+      throw new ConflictException('Email already registered');
     }
 
-    // Check if hotel slug already exists (but not owned by this user)
+    // Check if hotel slug already exists
     const existingHotel = await this.prisma.hotel.findUnique({
       where: { slug: dto.hotelSlug.toLowerCase() },
     });
 
-    if (existingHotel && (!existingUser || existingUser.hotelId !== existingHotel.id)) {
+    if (existingHotel) {
       throw new ConflictException('Hotel slug already taken');
     }
 
-    let supabaseUserId = dto.supabaseUserId;
-    let session = null;
+    // Hash password
+    const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
 
-    // If supabaseUserId is provided (from frontend after Supabase signup),
-    // skip Supabase signup and just create local records
-    if (!supabaseUserId) {
-      // Register with Supabase
-      const { user: supabaseUser, session: supabaseSession, error } = await this.supabase.signUp(
-        dto.email.toLowerCase(),
-        dto.password,
-        {
+    // Create hotel and user in transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create hotel
+      const hotel = await tx.hotel.create({
+        data: {
+          name: dto.hotelName,
+          slug: dto.hotelSlug.toLowerCase(),
+          email: dto.email.toLowerCase(),
+        },
+      });
+
+      // Create owner user (onboardingComplete = false for new hotel owners)
+      const user = await tx.user.create({
+        data: {
+          email: dto.email.toLowerCase(),
+          passwordHash,
           name: dto.name,
           role: UserRole.hotel_owner,
-          hotelName: dto.hotelName,
+          hotelId: hotel.id,
+          status: UserStatus.active,
+          onboardingComplete: false,
         },
-      );
-
-      if (error) {
-        if (error.message.includes('already registered')) {
-          throw new ConflictException('Email already registered');
-        }
-        throw new BadRequestException(error.message);
-      }
-
-      if (!supabaseUser) {
-        throw new BadRequestException('Failed to create user');
-      }
-
-      supabaseUserId = supabaseUser.id;
-      session = supabaseSession;
-    }
-
-    // Determine user status based on whether email verification is pending
-    const userStatus = dto.pendingEmailVerification
-      ? UserStatus.pending_verification
-      : UserStatus.active;
-
-    // Create or update hotel and user in transaction
-    const result = await this.prisma.$transaction(async (tx) => {
-      let hotel = existingHotel;
-
-      // Create hotel if it doesn't exist
-      if (!hotel) {
-        hotel = await tx.hotel.create({
-          data: {
-            name: dto.hotelName,
-            slug: dto.hotelSlug.toLowerCase(),
-            email: dto.email.toLowerCase(),
-          },
-        });
-      }
-
-      let user;
-
-      if (existingUser) {
-        // Update existing pending verification user
-        user = await tx.user.update({
-          where: { id: existingUser.id },
-          data: {
-            id: supabaseUserId, // Update to new Supabase ID
-            name: dto.name,
-            hotelId: hotel.id,
-            status: userStatus,
-          },
-        });
-      } else {
-        // Create owner user with Supabase ID
-        user = await tx.user.create({
-          data: {
-            id: supabaseUserId,
-            email: dto.email.toLowerCase(),
-            passwordHash: 'supabase-managed',
-            name: dto.name,
-            role: UserRole.hotel_owner,
-            hotelId: hotel.id,
-            status: userStatus,
-          },
-        });
-      }
+      });
 
       return { hotel, user };
     });
+
+    // Generate tokens
+    const tokens = await this.generateTokens(result.user);
 
     // Create audit log
     await this.createAuditLog(
@@ -342,34 +291,13 @@ export class AuthService {
       result.hotel.id,
     );
 
-    // Send welcome email (non-blocking) - only if not pending verification
-    if (!dto.pendingEmailVerification) {
-      this.sendWelcomeEmailAsync(
-        result.user.name,
-        result.user.email,
-        result.user.hotelId,
-        result.hotel.name,
-      );
-    }
-
-    // If session is null (email confirmation required or already provided via Supabase)
-    if (!session) {
-      return {
-        user: {
-          id: result.user.id,
-          email: result.user.email,
-          name: result.user.name,
-          role: result.user.role,
-          hotelId: result.user.hotelId,
-        },
-        tokens: {
-          accessToken: '',
-          refreshToken: '',
-          expiresIn: 0,
-          tokenType: 'Bearer',
-        },
-      };
-    }
+    // Send welcome email (non-blocking)
+    this.sendWelcomeEmailAsync(
+      result.user.name,
+      result.user.email,
+      result.user.hotelId,
+      result.hotel.name,
+    );
 
     return {
       user: {
@@ -378,38 +306,61 @@ export class AuthService {
         name: result.user.name,
         role: result.user.role,
         hotelId: result.user.hotelId,
+        onboardingComplete: result.user.onboardingComplete,
       },
-      tokens: {
-        accessToken: session.access_token,
-        refreshToken: session.refresh_token,
-        expiresIn: session.expires_in || 3600,
-        tokenType: 'Bearer',
-      },
+      tokens,
     };
   }
+
+  // ============================================
+  // REFRESH TOKEN
+  // ============================================
 
   async refreshToken(dto: RefreshTokenDto): Promise<TokenResponseDto> {
-    const { session, error } = await this.supabase.refreshSession(dto.refreshToken);
+    // Find refresh token in database
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: { token: dto.refreshToken },
+    });
 
-    if (error || !session) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
+    if (!storedToken) {
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
-    return {
-      accessToken: session.access_token,
-      refreshToken: session.refresh_token,
-      expiresIn: session.expires_in || 3600,
-      tokenType: 'Bearer',
-    };
+    // Check if token is expired
+    if (storedToken.expiresAt < new Date()) {
+      // Clean up expired token
+      await this.prisma.refreshToken.delete({
+        where: { id: storedToken.id },
+      });
+      throw new UnauthorizedException('Refresh token expired');
+    }
+
+    // Find user
+    const user = await this.prisma.user.findUnique({
+      where: { id: storedToken.userId },
+    });
+
+    if (!user || user.status !== UserStatus.active) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    // Delete old refresh token (rotation)
+    await this.prisma.refreshToken.delete({
+      where: { id: storedToken.id },
+    });
+
+    // Generate new tokens
+    return this.generateTokens(user);
   }
 
-  async logout(userId: string, refreshToken?: string): Promise<void> {
-    // Sign out from Supabase
-    await this.supabase.signOut();
+  // ============================================
+  // LOGOUT
+  // ============================================
 
-    // Also clean up any legacy refresh tokens in database
+  async logout(userId: string, refreshToken?: string): Promise<void> {
     try {
       if (refreshToken) {
+        // Delete specific refresh token
         await this.prisma.refreshToken.deleteMany({
           where: {
             userId,
@@ -417,6 +368,7 @@ export class AuthService {
           },
         });
       } else {
+        // Delete all refresh tokens for user (logout all devices)
         await this.prisma.refreshToken.deleteMany({
           where: { userId },
         });
@@ -435,47 +387,134 @@ export class AuthService {
     }
   }
 
+  // ============================================
+  // FORGOT PASSWORD
+  // ============================================
+
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
-    // Use Supabase password reset
-    const frontendUrl = this.configService.get<string>('frontend.adminUrl') || 'http://localhost:3000';
-    const redirectTo = `${frontendUrl}/auth/callback?next=/reset-password`;
-
-    const { error } = await this.supabase.resetPasswordForEmail(
-      dto.email.toLowerCase(),
-      redirectTo,
-    );
-
-    // Always return success to prevent email enumeration
-    if (error) {
-      this.logger.warn(`Password reset request failed: ${error.message}`);
-    }
-
-    // Also log in audit if user exists
     const user = await this.prisma.user.findFirst({
       where: { email: dto.email.toLowerCase() },
     });
 
-    if (user) {
-      await this.createAuditLog(
-        user.hotelId,
-        user.id,
-        'password_reset_requested',
-        'user',
-        user.id,
-      );
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return { message: 'If the email exists, a reset link has been sent' };
     }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Store hashed token in database
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      },
+    });
+
+    // Send password reset email
+    const frontendUrl = this.configService.get<string>('frontend.adminUrl') || 'http://localhost:3000';
+    const resetUrl = `${frontendUrl}/auth/reset-password?token=${resetToken}`;
+
+    try {
+      await this.notificationService.sendPasswordResetEmail(
+        user.name,
+        user.email,
+        resetUrl,
+      );
+    } catch (err: unknown) {
+      this.logger.error('Failed to send password reset email', { email: user.email, error: err instanceof Error ? err.message : 'Unknown error' });
+    }
+
+    // Create audit log
+    await this.createAuditLog(
+      user.hotelId,
+      user.id,
+      'password_reset_requested',
+      'user',
+      user.id,
+    );
 
     return { message: 'If the email exists, a reset link has been sent' };
   }
 
-  async resetPassword(_dto: unknown): Promise<{ message: string }> {
-    // For Supabase, the token is handled on the frontend
-    // This endpoint is called after the user sets a new password via Supabase UI
-    // The actual password reset happens via Supabase's auth flow
-    // The frontend will call supabase.auth.updateUser({ password: newPassword })
+  // ============================================
+  // RESET PASSWORD
+  // ============================================
 
-    return { message: 'Please use the password reset link sent to your email' };
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    // Hash the token to compare with stored hash
+    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
+
+    // Find valid reset token
+    const resetToken = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        tokenHash,
+        expiresAt: { gt: new Date() },
+        usedAt: null,
+      },
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    // Find user
+    const user = await this.prisma.user.findUnique({
+      where: { id: resetToken.userId },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    // Check password history
+    const isPasswordReused = await this.checkPasswordHistory(user.id, dto.password);
+    if (isPasswordReused) {
+      throw new BadRequestException(
+        'Cannot reuse any of your last 5 passwords. Please choose a different password.',
+      );
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
+
+    // Store current password in history before changing
+    await this.addToPasswordHistory(user.id, user.passwordHash);
+
+    // Update password and mark token as used
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash },
+      }),
+      this.prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+      // Invalidate all refresh tokens (force re-login)
+      this.prisma.refreshToken.deleteMany({
+        where: { userId: user.id },
+      }),
+    ]);
+
+    // Create audit log
+    await this.createAuditLog(
+      user.hotelId,
+      user.id,
+      'password_reset_completed',
+      'user',
+      user.id,
+    );
+
+    return { message: 'Password reset successfully. Please login with your new password.' };
   }
+
+  // ============================================
+  // CHANGE PASSWORD
+  // ============================================
 
   async changePassword(
     userId: string,
@@ -490,13 +529,9 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // Verify current password by trying to sign in
-    const { error: signInError } = await this.supabase.signInWithPassword(
-      user.email,
-      dto.currentPassword,
-    );
-
-    if (signInError) {
+    // Verify current password
+    const isCurrentPasswordValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!isCurrentPasswordValid) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
@@ -511,12 +546,14 @@ export class AuthService {
     // Store current password hash in history before changing
     await this.addToPasswordHistory(userId, user.passwordHash);
 
-    // Update password in Supabase
-    const { error } = await this.supabase.updateUserPassword(dto.newPassword);
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, this.bcryptRounds);
 
-    if (error) {
-      throw new BadRequestException('Failed to update password');
-    }
+    // Update password
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash },
+    });
 
     // Create audit log
     await this.createAuditLog(
@@ -530,13 +567,12 @@ export class AuthService {
     return { message: 'Password changed successfully' };
   }
 
-  /**
-   * Check if password matches any of the last 5 passwords
-   */
+  // ============================================
+  // PASSWORD HISTORY
+  // ============================================
+
   private async checkPasswordHistory(userId: string, newPassword: string): Promise<boolean> {
     try {
-      const bcrypt = await import('bcrypt');
-
       // Get last 5 password hashes
       const passwordHistory = await this.prisma.passwordHistory.findMany({
         where: { userId },
@@ -559,16 +595,8 @@ export class AuthService {
     }
   }
 
-  /**
-   * Add current password to history
-   */
   private async addToPasswordHistory(userId: string, passwordHash: string): Promise<void> {
     try {
-      // Skip if password hash is placeholder (Supabase-managed)
-      if (passwordHash === 'supabase-managed') {
-        return;
-      }
-
       // Add to history
       await this.prisma.passwordHistory.create({
         data: {
@@ -601,8 +629,12 @@ export class AuthService {
     }
   }
 
-  async validateUser(payload: SupabaseJwtPayload): Promise<any> {
-    // Get user from our database using Supabase user ID
+  // ============================================
+  // USER VALIDATION (used by JWT Strategy)
+  // ============================================
+
+  async validateUser(payload: JwtPayload): Promise<any> {
+    // Get user from database using JWT subject (user ID)
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       include: { hotel: true },
@@ -618,35 +650,130 @@ export class AuthService {
       name: user.name,
       role: user.role,
       hotelId: user.hotelId,
+      onboardingComplete: user.onboardingComplete,
       hotel: user.hotel,
     };
   }
 
-  async validateUserByToken(accessToken: string): Promise<any> {
-    // Verify token with Supabase
-    const { user: supabaseUser, error } = await this.supabase.getUser(accessToken);
+  // ============================================
+  // EMAIL VERIFICATION
+  // ============================================
 
-    if (error || !supabaseUser) {
-      return null;
+  async requestEmailVerification(userId: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
 
-    // Get user from our database
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+
+    // Store hashed token
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        email: user.email,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+      },
+    });
+
+    // Send verification email
+    const frontendUrl = this.configService.get<string>('frontend.adminUrl') || 'http://localhost:3000';
+    const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
+
+    try {
+      await this.notificationService.sendEmailVerification(
+        user.name,
+        user.email,
+        verifyUrl,
+      );
+    } catch (err: unknown) {
+      this.logger.error('Failed to send verification email', { email: user.email, error: err instanceof Error ? err.message : 'Unknown error' });
+    }
+
+    await this.createAuditLog(
+      user.hotelId,
+      user.id,
+      'email_verification_requested',
+      'user',
+      user.id,
+    );
+
+    return { message: 'Verification email sent' };
+  }
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    // Hash the token to compare with stored hash
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find valid verification token
+    const verificationToken = await this.prisma.emailVerificationToken.findFirst({
+      where: {
+        tokenHash,
+        expiresAt: { gt: new Date() },
+        verifiedAt: null,
+      },
+    });
+
+    if (!verificationToken) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    // Update user status and mark token as used
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: verificationToken.userId },
+        data: { status: UserStatus.active },
+      }),
+      this.prisma.emailVerificationToken.update({
+        where: { id: verificationToken.id },
+        data: { verifiedAt: new Date() },
+      }),
+    ]);
+
+    // Create audit log
     const user = await this.prisma.user.findUnique({
-      where: { id: supabaseUser.id },
+      where: { id: verificationToken.userId },
       include: { hotel: true },
     });
 
-    if (!user || user.status !== UserStatus.active) {
+    if (user) {
+      await this.createAuditLog(
+        user.hotelId,
+        user.id,
+        'email_verified',
+        'user',
+        user.id,
+      );
+
+      // Send welcome email now that email is verified
+      this.sendWelcomeEmailAsync(user.name, user.email, user.hotelId, user.hotel?.name);
+    }
+
+    return { message: 'Email verified successfully' };
+  }
+
+  // ============================================
+  // UTILITY METHODS
+  // ============================================
+
+  async getUserByEmail(email: string): Promise<{ exists: boolean; verified: boolean } | null> {
+    const user = await this.prisma.user.findFirst({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user) {
       return null;
     }
 
     return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      hotelId: user.hotelId,
-      hotel: user.hotel,
+      exists: true,
+      verified: user.status !== UserStatus.pending_verification,
     };
   }
 
@@ -673,9 +800,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Send welcome email asynchronously (non-blocking)
-   */
   private sendWelcomeEmailAsync(
     name: string,
     email: string,
@@ -696,226 +820,15 @@ export class AuthService {
   }
 
   /**
-   * Request email verification for a user
+   * Clean up expired refresh tokens (can be called periodically)
    */
-  async requestEmailVerification(userId: string): Promise<{ message: string }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Supabase handles email verification automatically
-    // This can be triggered by resending the confirmation email
-
-    await this.createAuditLog(
-      user.hotelId,
-      user.id,
-      'email_verification_requested',
-      'user',
-      user.id,
-    );
-
-    return { message: 'Verification email sent' };
-  }
-
-  /**
-   * Verify email with token (handled by Supabase)
-   */
-  async verifyEmail(_token: string): Promise<{ message: string }> {
-    // Supabase handles email verification via its own flow
-    // This endpoint may not be needed if using Supabase's built-in verification
-    return { message: 'Email verification is handled by Supabase' };
-  }
-
-  /**
-   * Sync user verification status from Supabase
-   * Called after email verification to update local user status
-   */
-  async syncUserVerificationStatus(
-    supabaseUserId: string,
-    isEmailVerified: boolean,
-  ): Promise<{ user: any; updated: boolean }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: supabaseUserId },
-      include: { hotel: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    let updated = false;
-
-    // If user is pending verification and email is now verified, update status
-    if (user.status === UserStatus.pending_verification && isEmailVerified) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { status: UserStatus.active },
-      });
-      updated = true;
-
-      // Create audit log
-      await this.createAuditLog(
-        user.hotelId,
-        user.id,
-        'email_verified',
-        'user',
-        user.id,
-      );
-
-      // Send welcome email now that email is verified
-      this.sendWelcomeEmailAsync(
-        user.name,
-        user.email,
-        user.hotelId,
-        user.hotel?.name,
-      );
-
-      this.logger.log(`User ${user.email} email verified, status updated to active`);
-    }
-
-    return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        hotelId: user.hotelId,
-        status: updated ? UserStatus.active : user.status,
+  async cleanupExpiredTokens(): Promise<number> {
+    const result = await this.prisma.refreshToken.deleteMany({
+      where: {
+        expiresAt: { lt: new Date() },
       },
-      updated,
-    };
-  }
-
-  /**
-   * Get user by email (for frontend to check if user exists)
-   */
-  async getUserByEmail(email: string): Promise<{ exists: boolean; verified: boolean } | null> {
-    const user = await this.prisma.user.findFirst({
-      where: { email: email.toLowerCase() },
     });
-
-    if (!user) {
-      return null;
-    }
-
-    return {
-      exists: true,
-      verified: user.status !== UserStatus.pending_verification,
-    };
-  }
-
-  /**
-   * Validate user with pending verification status allowed
-   * Used for endpoints that need to work during email verification flow
-   */
-  async validateUserIncludingPending(payload: SupabaseJwtPayload): Promise<any> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      include: { hotel: true },
-    });
-
-    if (!user) {
-      return null;
-    }
-
-    // Allow both active and pending_verification users
-    if (user.status !== UserStatus.active && user.status !== UserStatus.pending_verification) {
-      return null;
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      hotelId: user.hotelId,
-      hotel: user.hotel,
-      status: user.status,
-      isEmailVerified: user.status === UserStatus.active,
-    };
-  }
-
-  /**
-   * Sync user after email verification
-   * Called from frontend after successful email verification to sync local database
-   */
-  async syncUserAfterVerification(
-    supabaseUserId: string,
-    email: string,
-  ): Promise<{ user: any; synced: boolean }> {
-    const normalizedEmail = email.toLowerCase();
-
-    // First try to find user by Supabase ID
-    let user = await this.prisma.user.findUnique({
-      where: { id: supabaseUserId },
-      include: { hotel: true },
-    });
-
-    // If not found by ID, try by email
-    if (!user) {
-      user = await this.prisma.user.findFirst({
-        where: { email: normalizedEmail },
-        include: { hotel: true },
-      });
-
-      // If found by email but has different ID, update the ID
-      if (user && user.id !== supabaseUserId) {
-        this.logger.log(`Updating user ID from ${user.id} to ${supabaseUserId} for ${normalizedEmail}`);
-        user = await this.prisma.user.update({
-          where: { id: user.id },
-          data: { id: supabaseUserId },
-          include: { hotel: true },
-        });
-      }
-    }
-
-    if (!user) {
-      throw new NotFoundException('User not found. Please register first.');
-    }
-
-    // Update status to active if pending verification
-    let synced = false;
-    if (user.status === UserStatus.pending_verification) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { status: UserStatus.active },
-      });
-      user.status = UserStatus.active;
-      synced = true;
-
-      // Create audit log
-      await this.createAuditLog(
-        user.hotelId,
-        user.id,
-        'email_verified_sync',
-        'user',
-        user.id,
-      );
-
-      // Send welcome email now that email is verified
-      this.sendWelcomeEmailAsync(
-        user.name,
-        user.email,
-        user.hotelId,
-        user.hotel?.name,
-      );
-
-      this.logger.log(`User ${user.email} synced after email verification, status updated to active`);
-    }
-
-    return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        hotelId: user.hotelId,
-      },
-      synced,
-    };
+    return result.count;
   }
 }
+

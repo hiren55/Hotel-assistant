@@ -16,109 +16,109 @@ import { Type } from 'class-transformer';
 import { BookingStatus, BookingSource } from '@prisma/client';
 
 export class CreateBookingDto {
-  @ApiProperty({ description: 'Room ID' })
+  @ApiProperty({ description: 'Room ID', example: '550e8400-e29b-41d4-a716-446655440000' })
   @IsUUID()
   @IsNotEmpty()
   roomId: string;
 
-  @ApiProperty({ description: 'Guest full name' })
+  @ApiProperty({ description: 'Guest full name', example: 'Rahul Sharma' })
   @IsString()
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(255)
   guestName: string;
 
-  @ApiProperty({ description: 'Guest email' })
+  @ApiProperty({ description: 'Guest email', example: 'rahul.sharma@email.com' })
   @IsEmail()
   @IsNotEmpty()
   @MaxLength(255)
   guestEmail: string;
 
-  @ApiPropertyOptional({ description: 'Guest phone number' })
+  @ApiPropertyOptional({ description: 'Guest phone number', example: '+91-9876543210' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   guestPhone?: string;
 
-  @ApiProperty({ description: 'Check-in date (YYYY-MM-DD)' })
+  @ApiProperty({ description: 'Check-in date (YYYY-MM-DD)', example: '2026-03-15' })
   @Type(() => Date)
   @IsDate()
   checkIn: Date;
 
-  @ApiProperty({ description: 'Check-out date (YYYY-MM-DD)' })
+  @ApiProperty({ description: 'Check-out date (YYYY-MM-DD)', example: '2026-03-18' })
   @Type(() => Date)
   @IsDate()
   checkOut: Date;
 
-  @ApiPropertyOptional({ description: 'Number of adults (default: 1)' })
+  @ApiPropertyOptional({ description: 'Number of adults (default: 1)', example: 2 })
   @IsOptional()
   @IsInt()
   @Min(1)
   adults?: number = 1;
 
-  @ApiPropertyOptional({ description: 'Number of children (default: 0)' })
+  @ApiPropertyOptional({ description: 'Number of children (default: 0)', example: 1 })
   @IsOptional()
   @IsInt()
   @Min(0)
   children?: number = 0;
 
-  @ApiPropertyOptional({ description: 'Special requests' })
+  @ApiPropertyOptional({ description: 'Special requests', example: 'Early check-in please. Need a baby crib.' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   specialRequests?: string;
 
-  @ApiPropertyOptional({ description: 'Booking source', enum: BookingSource })
+  @ApiPropertyOptional({ description: 'Booking source', enum: BookingSource, example: 'admin' })
   @IsOptional()
   @IsEnum(BookingSource)
   source?: BookingSource = BookingSource.admin;
 }
 
 export class UpdateBookingDto {
-  @ApiPropertyOptional({ description: 'Guest full name' })
+  @ApiPropertyOptional({ description: 'Guest full name', example: 'Rahul Sharma' })
   @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(255)
   guestName?: string;
 
-  @ApiPropertyOptional({ description: 'Guest email' })
+  @ApiPropertyOptional({ description: 'Guest email', example: 'rahul.sharma@email.com' })
   @IsOptional()
   @IsEmail()
   @MaxLength(255)
   guestEmail?: string;
 
-  @ApiPropertyOptional({ description: 'Guest phone number' })
+  @ApiPropertyOptional({ description: 'Guest phone number', example: '+91-9876543210' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   guestPhone?: string;
 
-  @ApiPropertyOptional({ description: 'Check-in date' })
+  @ApiPropertyOptional({ description: 'Check-in date', example: '2026-03-16' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   checkIn?: Date;
 
-  @ApiPropertyOptional({ description: 'Check-out date' })
+  @ApiPropertyOptional({ description: 'Check-out date', example: '2026-03-19' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   checkOut?: Date;
 
-  @ApiPropertyOptional({ description: 'Number of adults' })
+  @ApiPropertyOptional({ description: 'Number of adults', example: 2 })
   @IsOptional()
   @IsInt()
   @Min(1)
   adults?: number;
 
-  @ApiPropertyOptional({ description: 'Number of children' })
+  @ApiPropertyOptional({ description: 'Number of children', example: 0 })
   @IsOptional()
   @IsInt()
   @Min(0)
   children?: number;
 
-  @ApiPropertyOptional({ description: 'Special requests' })
+  @ApiPropertyOptional({ description: 'Special requests', example: 'Late check-out requested.' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -126,81 +126,87 @@ export class UpdateBookingDto {
 }
 
 export class UpdateBookingStatusDto {
-  @ApiProperty({ description: 'Booking status', enum: BookingStatus })
+  @ApiProperty({ description: 'Booking status', enum: BookingStatus, example: 'confirmed' })
   @IsEnum(BookingStatus)
   status: BookingStatus;
 }
 
 export class BookingQueryDto {
-  @ApiPropertyOptional({ description: 'Filter by status' })
+  @ApiPropertyOptional({ description: 'Filter by status', enum: BookingStatus, example: 'confirmed' })
   @IsOptional()
   @IsEnum(BookingStatus)
   status?: BookingStatus;
 
-  @ApiPropertyOptional({ description: 'Filter by room ID' })
+  @ApiPropertyOptional({ description: 'Filter by room ID', example: '550e8400-e29b-41d4-a716-446655440000' })
   @IsOptional()
   @IsUUID()
   roomId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by guest email' })
+  @ApiPropertyOptional({ description: 'Filter by guest email', example: 'rahul.sharma@email.com' })
   @IsOptional()
   @IsEmail()
   guestEmail?: string;
 
-  @ApiPropertyOptional({ description: 'Filter from date' })
+  @ApiPropertyOptional({ description: 'Filter from date', example: '2026-03-01' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   fromDate?: Date;
 
-  @ApiPropertyOptional({ description: 'Filter to date' })
+  @ApiPropertyOptional({ description: 'Filter to date', example: '2026-03-31' })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   toDate?: Date;
 
-  @ApiPropertyOptional({ description: 'Page number (default: 1)' })
+  @ApiPropertyOptional({ description: 'Page number (default: 1)', example: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ description: 'Items per page (default: 10)' })
+  @ApiPropertyOptional({ description: 'Items per page (default: 10)', example: 10 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   limit?: number = 10;
 
-  @ApiPropertyOptional({ description: 'Sort by field' })
+  @ApiPropertyOptional({ description: 'Sort by field', example: 'createdAt' })
   @IsOptional()
   @IsString()
   sortBy?: string = 'createdAt';
 
-  @ApiPropertyOptional({ description: 'Sort order (asc/desc)' })
+  @ApiPropertyOptional({ description: 'Search by guest name or email', example: 'Hiren' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by sort order (asc/desc)', example: 'desc' })
   @IsOptional()
   @IsString()
   sortOrder?: 'asc' | 'desc' = 'desc';
 }
 
 export class AvailabilityQueryDto {
-  @ApiProperty({ description: 'Check-in date' })
+  @ApiProperty({ description: 'Check-in date', example: '2026-03-15' })
   @Type(() => Date)
   @IsDate()
   checkIn: Date;
 
-  @ApiProperty({ description: 'Check-out date' })
+  @ApiProperty({ description: 'Check-out date', example: '2026-03-18' })
   @Type(() => Date)
   @IsDate()
   checkOut: Date;
 
-  @ApiPropertyOptional({ description: 'Room ID to check' })
+  @ApiPropertyOptional({ description: 'Room ID to check', example: '550e8400-e29b-41d4-a716-446655440000' })
   @IsOptional()
   @IsUUID()
   roomId?: string;
 
-  @ApiPropertyOptional({ description: 'Number of guests' })
+  @ApiPropertyOptional({ description: 'Number of guests', example: 2 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -209,75 +215,75 @@ export class AvailabilityQueryDto {
 }
 
 export class RoomSummaryDto {
-  @ApiProperty()
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Deluxe Suite 101' })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'deluxe' })
   type: string;
 }
 
 export class BookingResponseDto {
-  @ApiProperty()
+  @ApiProperty({ example: '770e8400-e29b-41d4-a716-446655440002' })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '660e8400-e29b-41d4-a716-446655440001' })
   hotelId: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   roomId: string;
 
   @ApiPropertyOptional({ type: RoomSummaryDto })
   room?: RoomSummaryDto;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'BK-2026-001' })
   bookingNumber: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Rahul Sharma' })
   guestName: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'rahul.sharma@email.com' })
   guestEmail: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '+91-9876543210' })
   guestPhone?: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-03-15T00:00:00.000Z' })
   checkIn: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-03-18T00:00:00.000Z' })
   checkOut: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: 2 })
   adults: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 1 })
   children: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 13500.00 })
   totalPrice: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'INR' })
   currency: string;
 
-  @ApiProperty({ enum: BookingStatus })
+  @ApiProperty({ enum: BookingStatus, example: 'confirmed' })
   status: BookingStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Early check-in please.' })
   specialRequests?: string;
 
-  @ApiProperty({ enum: BookingSource })
+  @ApiProperty({ enum: BookingSource, example: 'admin' })
   source: BookingSource;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T00:00:00.000Z' })
   createdAt: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T00:00:00.000Z' })
   updatedAt: Date;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: null })
   cancelledAt?: Date;
 }
 
@@ -285,32 +291,32 @@ export class BookingListResponseDto {
   @ApiProperty({ type: [BookingResponseDto] })
   data: BookingResponseDto[];
 
-  @ApiProperty()
+  @ApiProperty({ example: 25 })
   total: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 1 })
   page: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 10 })
   limit: number;
 
-  @ApiProperty()
+  @ApiProperty({ example: 3 })
   totalPages: number;
 }
 
 export class AvailabilityResponseDto {
-  @ApiProperty()
+  @ApiProperty({ example: true })
   available: boolean;
 
   @ApiProperty({ type: [RoomSummaryDto] })
   availableRooms: RoomSummaryDto[];
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-03-15T00:00:00.000Z' })
   checkIn: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-03-18T00:00:00.000Z' })
   checkOut: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: 3 })
   nights: number;
 }

@@ -1,13 +1,15 @@
 import { apiClient } from './client';
 import type {
   Booking,
-  CreateBookingData,
+  CreateBookingDto,
+  UpdateBookingDto,
   PaginatedResponse,
-  PaginationParams,
   BookingStatus,
-} from '@/types';
+  ApiResponse,
+  FilterQuery,
+} from '@hotel-assistant/shared';
 
-export interface BookingFilters extends PaginationParams {
+export interface BookingFilters extends FilterQuery {
   status?: BookingStatus;
   startDate?: string;
   endDate?: string;
@@ -15,52 +17,61 @@ export interface BookingFilters extends PaginationParams {
   roomId?: string;
 }
 
+export interface AvailabilityResponse {
+  available: boolean;
+  rooms: { id: string; name: string; available: boolean }[];
+}
+
 export const bookingsApi = {
   // Get all bookings for a hotel
   getBookings: (hotelId: string, filters?: BookingFilters) =>
-    apiClient.get<PaginatedResponse<Booking>>(`/bookings/${hotelId}`, filters),
+    apiClient.get<ApiResponse<PaginatedResponse<Booking>>>(`/hotels/${hotelId}/bookings`, filters),
 
   // Get single booking
   getBooking: (hotelId: string, bookingId: string) =>
-    apiClient.get<Booking>(`/bookings/${hotelId}/${bookingId}`),
+    apiClient.get<Booking>(`/hotels/${hotelId}/bookings/${bookingId}`),
 
   // Create booking
-  createBooking: (hotelId: string, data: CreateBookingData) =>
-    apiClient.post<Booking>(`/bookings/${hotelId}`, data),
+  createBooking: (hotelId: string, data: CreateBookingDto) =>
+    apiClient.post<Booking>(`/hotels/${hotelId}/bookings`, data),
 
   // Update booking
-  updateBooking: (hotelId: string, bookingId: string, data: Partial<Booking>) =>
-    apiClient.patch<Booking>(`/bookings/${hotelId}/${bookingId}`, data),
+  updateBooking: (hotelId: string, bookingId: string, data: UpdateBookingDto) =>
+    apiClient.put<Booking>(`/hotels/${hotelId}/bookings/${bookingId}`, data),
 
-  // Cancel booking
-  cancelBooking: (hotelId: string, bookingId: string, reason?: string) =>
-    apiClient.patch<Booking>(`/bookings/${hotelId}/${bookingId}/cancel`, { reason }),
+  // Cancel booking (backend uses DELETE)
+  cancelBooking: (hotelId: string, bookingId: string) =>
+    apiClient.delete<Booking>(`/hotels/${hotelId}/bookings/${bookingId}`),
 
   // Confirm booking
   confirmBooking: (hotelId: string, bookingId: string) =>
-    apiClient.patch<Booking>(`/bookings/${hotelId}/${bookingId}/confirm`, {}),
+    apiClient.put<Booking>(`/hotels/${hotelId}/bookings/${bookingId}/status`, {
+      status: 'confirmed' as BookingStatus,
+    }),
 
   // Check in
   checkIn: (hotelId: string, bookingId: string) =>
-    apiClient.patch<Booking>(`/bookings/${hotelId}/${bookingId}/check-in`, {}),
+    apiClient.put<Booking>(`/hotels/${hotelId}/bookings/${bookingId}/status`, {
+      status: 'checked_in' as BookingStatus,
+    }),
 
   // Check out
   checkOut: (hotelId: string, bookingId: string) =>
-    apiClient.patch<Booking>(`/bookings/${hotelId}/${bookingId}/check-out`, {}),
+    apiClient.put<Booking>(`/hotels/${hotelId}/bookings/${bookingId}/status`, {
+      status: 'checked_out' as BookingStatus,
+    }),
 
   // Get upcoming check-ins
-  getUpcomingCheckIns: (hotelId: string, days: number = 7) =>
-    apiClient.get<Booking[]>(`/bookings/${hotelId}/upcoming`, { days }),
+  getUpcomingCheckIns: (hotelId: string, days = 7) =>
+    apiClient.get<Booking[]>(`/hotels/${hotelId}/bookings/upcoming`, { days }),
 
   // Check availability
-  checkAvailability: (
-    hotelId: string,
-    checkIn: string,
-    checkOut: string,
-    guests?: number
-  ) =>
-    apiClient.get<{ available: boolean; rooms: { id: string; name: string; available: boolean }[] }>(
-      `/bookings/${hotelId}/availability`,
-      { checkIn, checkOut, guests }
-    ),
+  checkAvailability: (hotelId: string, checkIn: string, checkOut: string, guests?: number) =>
+    apiClient.get<AvailabilityResponse>(`/hotels/${hotelId}/bookings/availability`, {
+      checkIn,
+      checkOut,
+      guests,
+    }),
 };
+
+export type { BookingFilters };

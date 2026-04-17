@@ -69,6 +69,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = 'INTERNAL_SERVER_ERROR';
     }
 
+    // DEBUG INJECTION START
+    try {
+      const fs = require('fs');
+      const extStr = exception instanceof Error ? JSON.stringify(exception, Object.getOwnPropertyNames(exception)) : JSON.stringify(exception);
+      const logLine = `[${new Date().toISOString()}] ${status} ${request.method} ${request.url}\nException: ${extStr}\nMessage: ${message}\nDetails: ${JSON.stringify(details)}\n\n`;
+      fs.appendFileSync('E:/AI-tool/api-debug.log', logLine);
+    } catch (e) { }
+    // DEBUG INJECTION END
+
     const errorResponse: ErrorResponse = {
       success: false,
       error: {

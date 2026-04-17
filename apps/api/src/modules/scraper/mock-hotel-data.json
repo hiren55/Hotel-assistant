@@ -1,0 +1,212 @@
+[
+  {
+    "category": "general",
+    "key": "hotel_name",
+    "value": "Silver Waves Resort & Spa"
+  },
+  {
+    "category": "general",
+    "key": "tagline",
+    "value": "Largest Ocean Front Resort in Daman"
+  },
+  {
+    "category": "general",
+    "key": "description",
+    "value": "Welcome to Silver Waves Resort & Spa, a premier destination for comfort and style in Daman. The hotel offers a blend of elegance and convenience, featuring 85 modern rooms and suites designed to provide a restful and enjoyable stay. Ideally situated in Daman with a sprawling oceanfront view, it offers easy access to the city's attractions, business centers, and entertainment venues."
+  },
+  {
+    "category": "general",
+    "key": "contact_phone",
+    "value": "+91 99099 68119, +91 75670 00277"
+  },
+  {
+    "category": "general",
+    "key": "contact_email",
+    "value": "reservations@silverwavesdaman.com"
+  },
+  {
+    "category": "general",
+    "key": "contact_website",
+    "value": "https://silverwavesdaman.com/"
+  },
+  {
+    "category": "general",
+    "key": "check_in_out",
+    "value": "Check-in time is 2:00 PM. Check-out time is 11:00 AM."
+  },
+  {
+    "category": "location",
+    "key": "address",
+    "value": "Sr. No.16/1, Devka Beach Road, Nani Daman, Daman, Daman and Diu 396210, India"
+  },
+  {
+    "category": "location",
+    "key": "nearest_airport",
+    "value": "Surat International Airport (STV) is approximately 120 km away."
+  },
+  {
+    "category": "location",
+    "key": "nearest_railway",
+    "value": "Vapi Railway Station is approximately 12 km (25 minutes drive) from the resort."
+  },
+  {
+    "category": "location",
+    "key": "nearby_attractions",
+    "value": "Devka Beach (0.5 km), Jampore Beach (8 km), Nani Daman Fort (3 km), Moti Daman Fort (4 km), Mirasol Lake Garden (5 km)."
+  },
+  {
+    "category": "rooms",
+    "key": "room_deluxe",
+    "value": "Deluxe Rooms offer the perfect blend of style and functionality. Features modern amenities, including high-speed Wi-Fi, flat-screen smart TVs, plush king-size bedding, and a writing desk. Approx 280 sq.ft."
+  },
+  {
+    "category": "rooms",
+    "key": "room_super_deluxe",
+    "value": "Super Deluxe Rooms provide extra space and upgraded interiors, featuring a cozy seating area, premium bath amenities, and partial garden views."
+  },
+  {
+    "category": "rooms",
+    "key": "room_premium",
+    "value": "Premium Rooms offer a blend of modern aesthetics and practical convenience, featuring high-speed internet, in-room entertainment, spacious bathrooms with a rain shower, and 24-hour concierge service."
+  },
+  {
+    "category": "rooms",
+    "key": "room_superior_ocean_view",
+    "value": "Superior Ocean View rooms serve as a tranquil retreat equipped with contemporary décor, premium bedding, and a private balcony offering breathtaking uninterrupted views of the Arabian Sea."
+  },
+  {
+    "category": "rooms",
+    "key": "room_duplex",
+    "value": "The Duplex is a home away from home. Thoughtfully designed across two levels with top-tier amenities, an en-suite bathroom, a well-lit desk area, and plenty of space for family vacations."
+  },
+  {
+    "category": "rooms",
+    "key": "room_duplex_ocean_view",
+    "value": "A sanctuary of peace and comfort across two floors. Equipped with the latest technology, plush furnishings, elegant interiors, and stunning oceanfront panoramas."
+  },
+  {
+    "category": "rooms",
+    "key": "suite_ocean_view",
+    "value": "Experience the warmth of true luxury hospitality. The Ocean View Suites feature a separate living room, a luxurious marble bathroom with a bathtub, VIP amenities, and a massive private terrace."
+  },
+  {
+    "category": "amenities",
+    "key": "pool_and_spa",
+    "value": "Large outdoor Swimming Pool with an integrated Pool Bar. Full-service Wellness Spa offering various massages and wellness therapies."
+  },
+  {
+    "category": "amenities",
+    "key": "fitness_center",
+    "value": "State-of-the-art Gym equipped with cardio machines and free weights, open from 6:00 AM to 9:00 PM."
+  },
+  {
+    "category": "amenities",
+    "key": "family_facilities",
+    "value": "Minecraft Kids Den with arcade games, PlayStation, and supervised activities. Book Ladder Library for quiet reading."
+  },
+  {
+    "category": "amenities",
+    "key": "event_spaces",
+    "value": "Coral Banquet Hall (capacity up to 500 guests) for weddings and corporate events. Sapphire Board Room for executive meetings."
+  },
+  {
+    "category": "amenities",
+    "key": "parking",
+    "value": "Free on-site secure parking with complimentary Valet Car Parking service during day time."
+  },
+  {
+    "category": "services",
+    "key": "dining_cocobay",
+    "value": "Cocobay Cafe & Bar: Our signature All Day Dining restaurant serving multi-cuisine buffets (Indian, Continental, Asian) and a la carte menus."
+  },
+  {
+    "category": "services",
+    "key": "dining_dagis",
+    "value": "Dagi's Air Deck Lounge: Rooftop lounge offering signature cocktails, premium spirits, and sunset views over the ocean."
+  },
+  {
+    "category": "services",
+    "key": "entertainment",
+    "value": "Unplugged Live Music performed daily in the evening at the central courtyard/restaurant."
+  },
+  {
+    "category": "services",
+    "key": "room_service",
+    "value": "24-hour In-Room Dining is available offering a comprehensive menu of snacks, meals, and beverages."
+  },
+  {
+    "category": "services",
+    "key": "guest_services",
+    "value": "24-hour Front Desk, Concierge Service, Daily Housekeeping, Laundry & Dry Cleaning (same day service available), Tour Desk."
+  },
+  {
+    "category": "policies",
+    "key": "cancellation_policy",
+    "value": "Free cancellation up to 48 hours before check-in. Cancellations within 48 hours or no-shows will be charged for the first night."
+  },
+  {
+    "category": "policies",
+    "key": "child_policy",
+    "value": "Children up to 5 years stay free when using existing bedding. Extra bed requirement for children above 6 years or adults is charged at INR 1500 per night."
+  },
+  {
+    "category": "policies",
+    "key": "pet_policy",
+    "value": "Pets are strictly not allowed on the hotel premises."
+  },
+  {
+    "category": "policies",
+    "key": "smoking_policy",
+    "value": "All interior rooms and corridors are 100% non-smoking. Designated smoking areas are available outside the lobby and on room balconies."
+  },
+  {
+    "category": "policies",
+    "key": "id_requirement",
+    "value": "All guests must present a valid government-issued photo ID (Aadhar Card, Passport, or Driving License) upon check-in. PAN cards are not accepted."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_breakfast",
+    "value": "Q: Is breakfast included in the room rate? A: Yes, complimentary buffet breakfast is included for all guests, served daily at Cocobay Cafe from 7:30 AM to 10:30 AM."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_wifi",
+    "value": "Q: Do you offer free Wi-Fi? A: Yes, high-speed complimentary Wi-Fi is available in all rooms and public areas."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_beach_access",
+    "value": "Q: Is the hotel on the beach? A: Yes, Silver Waves Resort is an oceanfront property located directly opposite Devka Beach."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_early_checkin",
+    "value": "Q: Can I check in early or check out late? A: Early check-in and late check-out are subject to room availability and may incur an additional fee. Please contact the front desk in advance."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_swimming_pool",
+    "value": "Q: Do I need to bring my own swimming costume? A: Proper Nylon/Lycra swimwear is mandatory for using the swimming pool. Swimwear can be purchased at our resort shop."
+  },
+  {
+    "category": "faqs",
+    "key": "faq_airport_transfer",
+    "value": "Q: Do you provide airport or railway station transfers? A: Yes, we provide paid transfer services. Please book at least 24 hours in advance through our concierge."
+  },
+  {
+    "category": "general",
+    "key": "testimonial_1",
+    "value": "\"We had the opportunity to stay at the Resort for a wedding. A wonderful property with extremely courteous staff.\" - Niloufer Shroff"
+  },
+  {
+    "category": "general",
+    "key": "testimonial_2",
+    "value": "\"The ocean view rooms are breathtaking. Perfect weekend getaway from Mumbai/Surat. The food at Cocobay was delicious.\" - Rahul M"
+  },
+  {
+    "category": "general",
+    "key": "testimonial_3",
+    "value": "\"It's really wonderful. I like Silver Waves more and more each day because it makes my vacation a lot easier and relaxing.\" - Sunil K"
+  }
+]

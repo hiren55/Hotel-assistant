@@ -163,9 +163,9 @@ export class CryptoService {
   }
 
   /**
-   * Hash a password using Argon2id (via Supabase) or bcrypt
-   * Note: For passwords, prefer using Supabase Auth which uses Argon2
-   * This is a fallback for cases where direct hashing is needed
+   * Hash a password using bcrypt
+   * Note: For passwords, the auth service handles hashing directly.
+   * This is a utility method for cases where direct hashing is needed.
    */
   async hashPassword(password: string): Promise<string> {
     // Using bcrypt as fallback since Argon2 requires native bindings

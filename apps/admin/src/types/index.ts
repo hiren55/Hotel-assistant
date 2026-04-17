@@ -1,97 +1,66 @@
-// User types
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  hotelId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// ============================================================
+// Re-exports from @hotel-assistant/shared (single source of truth)
+// ============================================================
+export type {
+  User,
+  Hotel,
+  HotelAddress,
+  HotelSettings,
+  HotelBranding,
+  Room,
+  RoomAmenity,
+  RoomImage,
+  RoomStatus,
+  Booking,
+  BookingStatus,
+  BookingMetadata,
+  GuestDetails,
+  KnowledgeEntry,
+  KnowledgeCategory,
+  ApiResponse,
+  ApiError,
+  PaginationMeta,
+  FilterQuery,
+  PaginationQuery,
+  HotelStatus,
+  SubscriptionTier,
+  SubscriptionStatus,
+  UserRole,
+  UserStatus,
+  BookingSource,
+  // DTOs
+  CreateRoomDto,
+  UpdateRoomDto,
+  CreateBookingDto,
+  UpdateBookingDto,
+  UpdateHotelDto,
+  CreateKnowledgeEntryDto,
+  UpdateKnowledgeEntryDto,
+  UpdateUserDto,
+} from '@hotel-assistant/shared';
 
-export type UserRole = 'super_admin' | 'hotel_owner' | 'hotel_manager' | 'hotel_staff';
+// ============================================================
+// Admin-specific interfaces (not in shared package)
+// ============================================================
 
-// Auth types
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}
+import type {
+  Room,
+  RoomStatus,
+  Booking,
+  BookingStatus,
+  KnowledgeEntry,
+  KnowledgeCategory,
+} from '@hotel-assistant/shared';
 
-export interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-export interface RegisterData {
-  email: string;
-  password: string;
-  name: string;
-  hotelName?: string;
-}
-
-// Hotel types
-export interface Hotel {
-  id: string;
-  name: string;
-  slug: string;
-  description?: string;
-  address?: HotelAddress;
-  contactEmail?: string;
-  contactPhone?: string;
-  website?: string;
-  logoUrl?: string;
-  coverImageUrl?: string;
-  timezone: string;
-  currency: string;
-  settings: HotelSettings;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface HotelAddress {
-  street?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  postalCode?: string;
-}
-
-export interface HotelSettings {
-  checkInTime?: string;
-  checkOutTime?: string;
-  primaryColor?: string;
-  welcomeMessage?: string;
-  fallbackMessage?: string;
-}
-
-// Room types
-export interface Room {
-  id: string;
-  hotelId: string;
-  name: string;
-  type: RoomType;
-  description?: string;
-  basePrice: number;
-  currency: string;
-  maxOccupancy: number;
-  maxAdults: number;
-  maxChildren: number;
+export interface AdminRoom extends Omit<Room, 'amenities' | 'images' | 'status'> {
   amenities: string[];
   images: string[];
   status: RoomStatus;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
 }
-
-export type RoomType = 'standard' | 'deluxe' | 'suite' | 'family' | 'executive' | 'penthouse';
-export type RoomStatus = 'available' | 'occupied' | 'maintenance' | 'disabled';
 
 export interface CreateRoomData {
   name: string;
-  type: RoomType;
+  type: string;
   description?: string;
   basePrice: number;
   maxOccupancy: number;
@@ -104,32 +73,9 @@ export interface CreateRoomData {
 
 export interface UpdateRoomData extends Partial<CreateRoomData> {}
 
-// Booking types
-export interface Booking {
-  id: string;
-  hotelId: string;
-  roomId: string;
-  room?: Room;
-  guestName: string;
-  guestEmail: string;
-  guestPhone?: string;
-  checkIn: string;
-  checkOut: string;
-  adults: number;
-  children: number;
-  totalPrice: number;
-  currency: string;
+export interface AdminBooking extends Omit<Booking, 'status'> {
   status: BookingStatus;
-  specialRequests?: string;
-  internalNotes?: string;
-  source: BookingSource;
-  confirmationNumber?: string;
-  createdAt: string;
-  updatedAt: string;
 }
-
-export type BookingStatus = 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
-export type BookingSource = 'widget' | 'manual' | 'api';
 
 export interface CreateBookingData {
   roomId: string;
@@ -144,21 +90,14 @@ export interface CreateBookingData {
   internalNotes?: string;
 }
 
-// Knowledge base types
-export interface KnowledgeEntry {
-  id: string;
-  hotelId: string;
+export interface AdminKnowledgeEntry extends Omit<KnowledgeEntry, 'category' | 'value' | 'key' | 'isActive'> {
   category: KnowledgeCategory;
   question: string;
   answer: string;
-  keywords: string[];
-  priority: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  keywords?: string[];
+  priority?: number;
+  isActive?: boolean; // Made optional by omitting from parent first
 }
-
-export type KnowledgeCategory = 'general' | 'rooms' | 'amenities' | 'policies' | 'location' | 'faq';
 
 export interface CreateKnowledgeData {
   category: KnowledgeCategory;
@@ -169,7 +108,24 @@ export interface CreateKnowledgeData {
   isActive?: boolean;
 }
 
-// Stats types
+export interface DashboardSummary {
+  hotelName: string;
+  currency: string;
+  totalBookings: number;
+  totalRevenue: number;
+  totalConversations: number;
+  resolutionRate: number;
+  recentBookings: {
+    id: string;
+    guestName: string;
+    roomType: string;
+    checkIn: string;
+    checkOut: string;
+    status: string;
+    amount: number;
+  }[];
+}
+
 export interface DashboardStats {
   totalBookings: number;
   bookingsChange: number;
@@ -182,7 +138,6 @@ export interface DashboardStats {
   conversionChange: number;
 }
 
-// Pagination types
 export interface PaginationParams {
   page?: number;
   limit?: number;
@@ -198,15 +153,22 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-// API Response types
-export interface ApiResponse<T> {
-  data: T;
-  message?: string;
+export interface LoginCredentials {
+  email: string;
+  password: string;
 }
 
-export interface ApiError {
-  message: string;
-  code?: string;
-  statusCode: number;
-  errors?: Record<string, string[]>;
+export interface RegisterData {
+  email: string;
+  password: string;
+  name: string;
+  hotelName?: string;
+  hotelSlug?: string;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType?: string;
 }

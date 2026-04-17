@@ -88,7 +88,11 @@ class APIClient {
       return {} as T;
     }
 
-    return response.json();
+    const json = await response.json();
+    if (json && typeof json === 'object' && 'success' in json && 'data' in json) {
+      return json.data as T;
+    }
+    return json;
   }
 
   private async refreshToken(): Promise<boolean> {

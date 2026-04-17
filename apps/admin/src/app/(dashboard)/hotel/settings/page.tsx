@@ -57,7 +57,7 @@ const currencies = [
 
 export default function HotelSettingsPage() {
   const { data: hotel, isLoading } = useMyHotel();
-  const updateSettings = useUpdateHotelSettings(hotel?.id || '');
+  const updateSettings = useUpdateHotelSettings();
 
   const form = useForm<HotelSettingsFormData>({
     resolver: zodResolver(hotelSettingsSchema),
@@ -83,8 +83,9 @@ export default function HotelSettingsPage() {
   }, [hotel, form]);
 
   const onSubmit = async (data: HotelSettingsFormData) => {
+    if (!hotel?.id) return;
     try {
-      await updateSettings.mutateAsync(data);
+      await updateSettings.mutateAsync({ id: hotel.id, settings: data });
       toast({
         title: 'Settings Updated',
         description: 'Hotel settings have been saved successfully.',

@@ -1,21 +1,22 @@
-'use client';
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { knowledgeApi } from '@/lib/api';
-import type { CreateKnowledgeData, KnowledgeCategory } from '@/types';
+import { knowledgeApi, type KnowledgeFilters } from '../api/knowledge';
+import type {
+  CreateKnowledgeEntryDto,
+  UpdateKnowledgeEntryDto,
+  KnowledgeCategory,
+  KnowledgeEntry,
+} from '@hotel-assistant/shared';
 
 export const knowledgeKeys = {
   all: ['knowledge'] as const,
   lists: () => [...knowledgeKeys.all, 'list'] as const,
   list: (hotelId: string, category?: KnowledgeCategory) =>
     [...knowledgeKeys.lists(), hotelId, category] as const,
-  grouped: (hotelId: string) =>
-    [...knowledgeKeys.all, 'grouped', hotelId] as const,
+  grouped: (hotelId: string) => [...knowledgeKeys.all, 'grouped', hotelId] as const,
   details: () => [...knowledgeKeys.all, 'detail'] as const,
   detail: (hotelId: string, entryId: string) =>
     [...knowledgeKeys.details(), hotelId, entryId] as const,
-  context: (hotelId: string) =>
-    [...knowledgeKeys.all, 'context', hotelId] as const,
+  context: (hotelId: string) => [...knowledgeKeys.all, 'context', hotelId] as const,
 };
 
 export function useKnowledgeEntries(hotelId: string, category?: KnowledgeCategory) {
@@ -54,11 +55,10 @@ export function useCreateKnowledgeEntry(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateKnowledgeData) =>
-      knowledgeApi.createEntry(hotelId, data),
+    mutationFn: (data: CreateKnowledgeEntryDto) => knowledgeApi.createEntry(hotelId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
     },
   });
 }
@@ -67,12 +67,12 @@ export function useUpdateKnowledgeEntry(hotelId: string, entryId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: Partial<CreateKnowledgeData>) =>
+    mutationFn: (data: Partial<UpdateKnowledgeEntryDto>) =>
       knowledgeApi.updateEntry(hotelId, entryId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
+      void queryClient.invalidateQueries({
         queryKey: knowledgeKeys.detail(hotelId, entryId),
       });
     },
@@ -85,8 +85,8 @@ export function useDeleteKnowledgeEntry(hotelId: string) {
   return useMutation({
     mutationFn: (entryId: string) => knowledgeApi.deleteEntry(hotelId, entryId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
     },
   });
 }
@@ -97,8 +97,8 @@ export function useToggleKnowledgeEntry(hotelId: string) {
   return useMutation({
     mutationFn: (entryId: string) => knowledgeApi.toggleActive(hotelId, entryId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
     },
   });
 }
@@ -107,11 +107,10 @@ export function useBulkImportKnowledge(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (entries: CreateKnowledgeData[]) =>
-      knowledgeApi.bulkImport(hotelId, entries),
+    mutationFn: (entries: CreateKnowledgeEntryDto[]) => knowledgeApi.bulkImport(hotelId, entries),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: knowledgeKeys.grouped(hotelId) });
     },
   });
 }

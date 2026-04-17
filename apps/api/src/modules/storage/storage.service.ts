@@ -7,10 +7,20 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SupabaseService } from '../../supabase/supabase.service';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import * as crypto from 'crypto';
 
 /**
- * Secure Storage Service
+ * Secure Storage Service (S3-Compatible)
+ *
+ * Works with AWS S3, Cloudflare R2, MinIO, or any S3-compatible storage.
  *
  * All storage operations are proxied through this service.
  * Client NEVER gets direct access to storage URLs or credentials.
@@ -51,6 +61,7 @@ export interface SignedUrlResponse {
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
+  private s3Client: S3Client | null = null;
 
   // Allowed MIME types for upload
   private readonly allowedMimeTypes = [
@@ -74,10 +85,37 @@ export class StorageService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly supabase: SupabaseService,
     private readonly configService: ConfigService,
   ) {
-    this.bucketName = this.configService.get<string>('STORAGE_BUCKET_NAME') || 'hotel-files';
+    this.bucketName = this.configService.get<string>('S3_BUCKET') || 'hotel-files';
+
+    // Initialize S3 client (works with R2, S3, MinIO, etc.)
+    const s3Endpoint = this.configService.get<string>('S3_ENDPOINT');
+    const s3AccessKey = this.configService.get<string>('S3_ACCESS_KEY');
+    const s3SecretKey = this.configService.get<string>('S3_SECRET_KEY');
+    const s3Region = this.configService.get<string>('S3_REGION') || 'auto';
+
+    if (s3Endpoint && s3AccessKey && s3SecretKey) {
+      this.s3Client = new S3Client({
+        region: s3Region,
+        endpoint: s3Endpoint,
+        credentials: {
+          accessKeyId: s3AccessKey,
+          secretAccessKey: s3SecretKey,
+        },
+        forcePathStyle: true, // Required for R2 and MinIO
+      });
+      this.logger.log('S3-compatible storage initialized');
+    } else {
+      this.logger.warn('S3 storage not configured. File storage features will not work.');
+    }
+  }
+
+  private ensureS3Client(): S3Client {
+    if (!this.s3Client) {
+      throw new BadRequestException('Storage service is not configured. Set S3_ENDPOINT, S3_ACCESS_KEY, and S3_SECRET_KEY.');
+    }
+    return this.s3Client;
   }
 
   /**
@@ -117,27 +155,24 @@ export class StorageService {
       throw new NotFoundException('File not found');
     }
 
-    // In a real implementation, you would have a files table
-    // For now, construct the path from fileId
+    const s3 = this.ensureS3Client();
     const filePath = `${hotelId}/${fileId}`;
 
     try {
-      const supabaseClient = this.supabase.getAdminClient();
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: filePath,
+      });
 
-      const { data, error } = await supabaseClient.storage
-        .from(this.bucketName)
-        .createSignedUrl(filePath, this.signedUrlExpiry);
-
-      if (error) {
-        this.logger.error('Failed to create signed URL', error);
-        throw new NotFoundException('File not found');
-      }
+      const signedUrl = await getSignedUrl(s3, command, {
+        expiresIn: this.signedUrlExpiry,
+      });
 
       // Log access
       await this.logStorageAccess(userId, hotelId, fileId, 'download');
 
       return {
-        url: data.signedUrl,
+        url: signedUrl,
         expiresIn: this.signedUrlExpiry,
         expiresAt: new Date(Date.now() + this.signedUrlExpiry * 1000),
       };
@@ -184,23 +219,25 @@ export class StorageService {
     // Construct secure path: hotelId/fileId/filename
     const filePath = `${request.hotelId}/${fileId}/${sanitizedName}`;
 
+    const s3 = this.ensureS3Client();
+
     try {
-      const supabaseClient = this.supabase.getAdminClient();
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: filePath,
+        ContentType: request.mimeType,
+        ContentLength: request.size,
+      });
 
-      const { data, error } = await supabaseClient.storage
-        .from(this.bucketName)
-        .createSignedUploadUrl(filePath);
-
-      if (error) {
-        this.logger.error('Failed to create upload URL', error);
-        throw new BadRequestException('Failed to prepare upload');
-      }
+      const signedUrl = await getSignedUrl(s3, command, {
+        expiresIn: this.signedUrlExpiry,
+      });
 
       // Log upload request
       await this.logStorageAccess(request.userId, request.hotelId, fileId, 'upload_request');
 
       return {
-        url: data.signedUrl,
+        url: signedUrl,
         fileId,
         path: filePath,
         expiresIn: this.signedUrlExpiry,
@@ -216,6 +253,70 @@ export class StorageService {
   }
 
   /**
+   * Direct file upload (used for small files like logos)
+   */
+  async uploadFile(
+    fileBuffer: Buffer,
+    fileName: string,
+    mimeType: string,
+    size: number,
+    hotelId: string,
+    userId: string
+  ): Promise<{ url: string; fileId: string; path: string }> {
+    // Verify tenant access
+    const hasAccess = await this.verifyTenantAccess(userId, hotelId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Validate MIME type
+    if (!this.allowedMimeTypes.includes(mimeType)) {
+      throw new BadRequestException(
+        `Invalid file type. Allowed types: ${this.allowedMimeTypes.join(', ')}`,
+      );
+    }
+
+    // Validate file size
+    if (size > this.maxFileSize) {
+      throw new BadRequestException(
+        `File too large. Maximum size: ${this.maxFileSize / 1024 / 1024}MB`,
+      );
+    }
+
+    const sanitizedName = this.sanitizeFileName(fileName);
+    const fileId = crypto.randomUUID();
+    const filePath = `${hotelId}/${fileId}/${sanitizedName}`;
+
+    const s3 = this.ensureS3Client();
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: filePath,
+        Body: fileBuffer,
+        ContentType: mimeType,
+      });
+
+      await s3.send(command);
+
+      // We return a predictable formatted URL that clients can use
+      // In a real app this would often be a CDN URL, but for now we provide a storage controller endpoint path
+      const publicUrl = `/a /${hotelId}/${fileId}/url`;
+
+      await this.logStorageAccess(userId, hotelId, fileId, 'direct_upload');
+
+      return {
+        url: publicUrl,
+        fileId,
+        path: filePath,
+      };
+    } catch (error) {
+      this.logger.error('File upload error', error);
+      throw new BadRequestException('Failed to upload file');
+    }
+  }
+
+  /**
    * Delete a file from storage
    */
   async deleteFile(fileId: string, userId: string, hotelId: string): Promise<void> {
@@ -225,30 +326,31 @@ export class StorageService {
       throw new NotFoundException('File not found');
     }
 
+    const s3 = this.ensureS3Client();
     const filePath = `${hotelId}/${fileId}`;
 
     try {
-      const supabaseClient = this.supabase.getAdminClient();
-
       // List files in the directory to get actual filename
-      const { data: files, error: listError } = await supabaseClient.storage
-        .from(this.bucketName)
-        .list(filePath);
+      const listCommand = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        Prefix: filePath,
+      });
 
-      if (listError || !files?.length) {
+      const listResult = await s3.send(listCommand);
+
+      if (!listResult.Contents?.length) {
         throw new NotFoundException('File not found');
       }
 
       // Delete all files in the directory (should be just one)
-      const filesToDelete = files.map(f => `${filePath}/${f.name}`);
-
-      const { error } = await supabaseClient.storage
-        .from(this.bucketName)
-        .remove(filesToDelete);
-
-      if (error) {
-        this.logger.error('Failed to delete file', error);
-        throw new BadRequestException('Failed to delete file');
+      for (const file of listResult.Contents) {
+        if (file.Key) {
+          const deleteCommand = new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: file.Key,
+          });
+          await s3.send(deleteCommand);
+        }
       }
 
       // Log deletion
@@ -269,7 +371,6 @@ export class StorageService {
     hotelId: string,
     userId: string,
     limit: number = 100,
-    offset: number = 0,
   ): Promise<{ files: { name: string; id: string; size: number }[]; total: number }> {
     // Verify tenant access
     const hasAccess = await this.verifyTenantAccess(userId, hotelId);
@@ -277,27 +378,24 @@ export class StorageService {
       throw new ForbiddenException('Access denied');
     }
 
+    const s3 = this.ensureS3Client();
+
     try {
-      const supabaseClient = this.supabase.getAdminClient();
+      const command = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        Prefix: `${hotelId}/`,
+        MaxKeys: limit,
+      });
 
-      const { data: folders, error } = await supabaseClient.storage
-        .from(this.bucketName)
-        .list(hotelId, {
-          limit,
-          offset,
-        });
+      // Note: S3 doesn't support offset directly, would need ContinuationToken for pagination
+      const result = await s3.send(command);
 
-      if (error) {
-        this.logger.error('Failed to list files', error);
-        return { files: [], total: 0 };
-      }
-
-      const files = folders
-        .filter(f => f.id) // Filter out non-files
-        .map(f => ({
-          name: f.name,
-          id: f.name, // The folder name IS the file ID in our structure
-          size: f.metadata?.size || 0,
+      const files = (result.Contents || [])
+        .filter((f: { Key?: string }) => f.Key)
+        .map((f: { Key?: string; Size?: number }) => ({
+          name: f.Key!.split('/').pop() || f.Key!,
+          id: f.Key!.split('/')[1] || f.Key!, // Extract fileId from path
+          size: f.Size || 0,
         }));
 
       return {
@@ -315,7 +413,7 @@ export class StorageService {
    */
   private sanitizeFileName(fileName: string): string {
     // Remove path components
-    let sanitized = fileName.replace(/^.*[\\\/]/, '');
+    let sanitized = fileName.replace(/^.*[\\/]/, '');
 
     // Remove special characters except alphanumeric, dash, underscore, dot
     sanitized = sanitized.replace(/[^a-zA-Z0-9\-_\.]/g, '_');

@@ -12,31 +12,31 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AddressDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '123 Marine Drive' })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   street?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Mumbai' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   city?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Maharashtra' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   state?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '400001' })
   @IsOptional()
   @IsString()
   @MaxLength(20)
   postalCode?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'India' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -44,25 +44,25 @@ export class AddressDto {
 }
 
 export class BrandingDto {
-  @ApiPropertyOptional({ description: 'Primary brand color (hex)' })
+  @ApiPropertyOptional({ description: 'Primary brand color (hex)', example: '#1E40AF' })
   @IsOptional()
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Primary color must be a valid hex color' })
   primaryColor?: string;
 
-  @ApiPropertyOptional({ description: 'Secondary brand color (hex)' })
+  @ApiPropertyOptional({ description: 'Secondary brand color (hex)', example: '#F59E0B' })
   @IsOptional()
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Secondary color must be a valid hex color' })
   secondaryColor?: string;
 
-  @ApiPropertyOptional({ description: 'Logo URL' })
+  @ApiPropertyOptional({ description: 'Logo URL', example: 'https://example.com/logo.png' })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   logoUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Welcome message for chat widget' })
+  @ApiPropertyOptional({ description: 'Welcome message for chat widget', example: 'Welcome to Grand Palace Hotel! How can I help you today?' })
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -70,60 +70,60 @@ export class BrandingDto {
 }
 
 export class HotelSettingsDto {
-  @ApiPropertyOptional({ description: 'Default check-in time (HH:MM)' })
+  @ApiPropertyOptional({ description: 'Default check-in time (HH:MM)', example: '14:00' })
   @IsOptional()
   @IsString()
   @Matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, { message: 'Check-in time must be in HH:MM format' })
   checkInTime?: string;
 
-  @ApiPropertyOptional({ description: 'Default check-out time (HH:MM)' })
+  @ApiPropertyOptional({ description: 'Default check-out time (HH:MM)', example: '11:00' })
   @IsOptional()
   @IsString()
   @Matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, { message: 'Check-out time must be in HH:MM format' })
   checkOutTime?: string;
 
-  @ApiPropertyOptional({ description: 'Default currency code' })
+  @ApiPropertyOptional({ description: 'Default currency code', example: 'INR' })
   @IsOptional()
   @IsString()
   @MaxLength(3)
   currency?: string;
 
-  @ApiPropertyOptional({ description: 'Timezone' })
+  @ApiPropertyOptional({ description: 'Timezone', example: 'Asia/Kolkata' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   timezone?: string;
 
-  @ApiPropertyOptional({ description: 'Cancellation policy text' })
+  @ApiPropertyOptional({ description: 'Cancellation policy text', example: 'Free cancellation up to 24 hours before check-in.' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   cancellationPolicy?: string;
 
-  @ApiPropertyOptional({ description: 'Enable chat widget' })
+  @ApiPropertyOptional({ description: 'Enable chat widget', example: true })
   @IsOptional()
   widgetEnabled?: boolean;
 
-  @ApiPropertyOptional({ description: 'Enable booking via widget' })
+  @ApiPropertyOptional({ description: 'Enable booking via widget', example: true })
   @IsOptional()
   bookingEnabled?: boolean;
 }
 
 export class UpdateHotelDto {
-  @ApiPropertyOptional({ description: 'Hotel name' })
+  @ApiPropertyOptional({ description: 'Hotel name', example: 'Grand Palace Hotel' })
   @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(255)
   name?: string;
 
-  @ApiPropertyOptional({ description: 'Contact email' })
+  @ApiPropertyOptional({ description: 'Contact email', example: 'info@grandpalace.com' })
   @IsOptional()
   @IsEmail()
   @MaxLength(255)
   email?: string;
 
-  @ApiPropertyOptional({ description: 'Contact phone' })
+  @ApiPropertyOptional({ description: 'Contact phone', example: '+91-9876543210' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -152,22 +152,22 @@ export class UpdateHotelDto {
 }
 
 export class HotelResponseDto {
-  @ApiProperty()
+  @ApiProperty({ example: '550e8400-e29b-41d4-a716-446655440000' })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Grand Palace Hotel' })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'grand-palace-hotel' })
   slug: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'grandpalace' })
   subdomain?: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'info@grandpalace.com' })
   email: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '+91-9876543210' })
   phone?: string;
 
   @ApiPropertyOptional()
@@ -179,21 +179,21 @@ export class HotelResponseDto {
   @ApiPropertyOptional()
   settings?: HotelSettingsDto;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'active' })
   status: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'free' })
   subscriptionTier: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'trialing' })
   subscriptionStatus: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '2026-03-28T00:00:00.000Z' })
   trialEndsAt?: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T00:00:00.000Z' })
   createdAt: Date;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T00:00:00.000Z' })
   updatedAt: Date;
 }

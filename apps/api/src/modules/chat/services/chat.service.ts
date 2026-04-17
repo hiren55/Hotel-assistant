@@ -154,15 +154,11 @@ export class ChatService {
         };
       }
 
-      const roomList = rooms
-        .map((r, i) => `${i + 1}. ${r.name} (${r.type}) - $${r.basePrice}/night, up to ${r.capacity} guests`)
-        .join('\n');
-
       return {
-        message: `Great! I'd be happy to help you make a reservation. Here are our available room types:\n\n${roomList}\n\nWhich room would you like to book? You can say the room name or number.`,
+        message: `Great! I'd be happy to help you make a reservation. Please select one of our available rooms below to continue:`,
         intent: 'booking_intent',
         bookingState: { step: 'room_selection' },
-        suggestedActions: rooms.map((r) => r.name),
+        metadata: { rooms },
       };
     }
 
@@ -172,20 +168,18 @@ export class ChatService {
       const selectedRoom = this.findRoomFromMessage(message, rooms);
 
       if (!selectedRoom) {
-        const roomList = rooms.map((r, i) => `${i + 1}. ${r.name}`).join('\n');
         return {
-          message: `I couldn't identify which room you'd like. Please select from our available rooms:\n\n${roomList}`,
+          message: `I couldn't identify which room you'd like. Please select one of the rooms from the list below:`,
           intent: 'booking_intent',
           bookingState: currentState,
-          suggestedActions: rooms.map((r) => r.name),
+          metadata: { rooms },
         };
       }
 
       return {
-        message: `Excellent choice! You've selected the ${selectedRoom.name}.\n\nNow, please provide your check-in and check-out dates. For example: "December 20 to December 25" or "2024-12-20 to 2024-12-25"`,
+        message: `Excellent choice! The ${selectedRoom.name} is available. When would you like to stay?`,
         intent: 'booking_intent',
         bookingState: { ...currentState, step: 'date_selection', roomId: selectedRoom.id },
-        suggestedActions: ['Today', 'Tomorrow', 'This weekend'],
       };
     }
 
@@ -195,7 +189,7 @@ export class ChatService {
 
       if (!dates) {
         return {
-          message: "I couldn't understand the dates. Please provide your check-in and check-out dates in a format like 'December 20 to December 25' or '2024-12-20 to 2024-12-25'.",
+          message: "I didn't quite catch those dates. Please select your check-in and check-out dates using the calendar below:",
           intent: 'booking_intent',
           bookingState: currentState,
         };
@@ -543,5 +537,9 @@ export class ChatService {
       where: { hotelId, sessionId },
       data: { endedAt: new Date() },
     });
+  }
+
+  async getAvailableRooms(hotelId: string) {
+    return this.roomsService.findActiveByHotel(hotelId);
   }
 }

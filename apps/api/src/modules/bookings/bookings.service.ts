@@ -45,6 +45,7 @@ export class BookingsService {
       status,
       roomId,
       guestEmail,
+      search,
       fromDate,
       toDate,
       sortBy = 'createdAt',
@@ -56,6 +57,13 @@ export class BookingsService {
     if (status) where.status = status;
     if (roomId) where.roomId = roomId;
     if (guestEmail) where.guestEmail = { contains: guestEmail, mode: 'insensitive' };
+    if (search) {
+      where.OR = [
+        { guestName: { contains: search, mode: 'insensitive' } },
+        { guestEmail: { contains: search, mode: 'insensitive' } },
+        { bookingNumber: { contains: search, mode: 'insensitive' } },
+      ];
+    }
     if (fromDate) where.checkIn = { gte: fromDate };
     if (toDate) where.checkOut = { lte: toDate };
 
@@ -349,10 +357,12 @@ export class BookingsService {
     const validTransitions: Record<BookingStatus, BookingStatus[]> = {
       [BookingStatus.pending]: [BookingStatus.confirmed, BookingStatus.cancelled],
       [BookingStatus.confirmed]: [
-        BookingStatus.completed,
+        BookingStatus.checked_in,
         BookingStatus.cancelled,
         BookingStatus.no_show,
       ],
+      [BookingStatus.checked_in]: [BookingStatus.checked_out, BookingStatus.cancelled],
+      [BookingStatus.checked_out]: [BookingStatus.completed],
       [BookingStatus.completed]: [],
       [BookingStatus.cancelled]: [],
       [BookingStatus.no_show]: [],

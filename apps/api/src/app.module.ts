@@ -5,7 +5,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
 import { PrismaModule } from './prisma/prisma.module';
-import { SupabaseModule } from './supabase/supabase.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
@@ -18,9 +17,12 @@ import { ChatModule } from './modules/chat/chat.module';
 import { WidgetModule } from './modules/widget/widget.module';
 import { EmailModule } from './modules/email/email.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { ScraperModule } from './modules/scraper/scraper.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { HealthModule } from './health/health.module';
 
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { TenantAuditMiddleware } from './common/middleware/tenant-audit.middleware';
 import configuration from './config/configuration';
 
 @Module({
@@ -53,7 +55,6 @@ import configuration from './config/configuration';
 
     // Core modules
     PrismaModule,
-    SupabaseModule,
     CommonModule,
     EmailModule,
     AuthModule,
@@ -64,6 +65,8 @@ import configuration from './config/configuration';
     ChatModule,
     WidgetModule,
     StorageModule,
+    ScraperModule,
+    OnboardingModule,
     HealthModule,
   ],
   providers: [
@@ -87,5 +90,6 @@ import configuration from './config/configuration';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+    consumer.apply(TenantAuditMiddleware).forRoutes('hotels/*');
   }
 }

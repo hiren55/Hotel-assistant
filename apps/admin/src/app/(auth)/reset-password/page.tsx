@@ -1,133 +1,34 @@
 'use client';
 
-import { useState, useEffect, Suspense, useRef } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 /**
- * Password Reset Page - Bulletproof Implementation
- *
- * This page handles password reset with MANUAL token processing.
- * Does NOT rely on Supabase events which may fire before React mounts.
+ * Password Reset Page
+ * 
+ * Handles password reset via token from URL query parameter.
+ * Token is sent from the backend forgot-password email.
  */
 
 function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialized = useRef(false);
 
   const [formData, setFormData] = useState({ password: '', confirmPassword: '' });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [pageState, setPageState] = useState<'loading' | 'ready' | 'success' | 'error'>('loading');
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [pageState, setPageState] = useState<'ready' | 'success' | 'error'>(() => {
+    // Check if token is present in URL
+    if (typeof window !== 'undefined') {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) return 'error';
+    }
+    return 'ready';
+  });
 
-  useEffect(() => {
-    // Prevent double initialization in React Strict Mode
-    if (initialized.current) return;
-    initialized.current = true;
-
-    const initializeResetPage = async () => {
-      console.log('=== Password Reset Page Initialization ===');
-
-      // Step 1: Check for error in URL params
-      const errorParam = searchParams.get('error');
-      if (errorParam) {
-        console.log('Error in URL:', errorParam);
-        setError(decodeURIComponent(errorParam));
-        setPageState('error');
-        return;
-      }
-
-      // Step 2: Get the current hash
-      const hash = window.location.hash;
-      console.log('Current hash:', hash ? 'present' : 'empty');
-
-      // Step 3: Extract tokens from hash
-      let accessToken: string | null = null;
-      let refreshToken: string | null = null;
-
-      if (hash && hash.includes('access_token')) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        accessToken = hashParams.get('access_token');
-        refreshToken = hashParams.get('refresh_token');
-        const type = hashParams.get('type');
-        console.log('Extracted from hash - type:', type, 'hasAccessToken:', !!accessToken, 'hasRefreshToken:', !!refreshToken);
-      }
-
-      // Step 4: Try to get existing session (might already be set by detectSessionInUrl)
-      console.log('Checking for existing session...');
-      const { data: { session: existingSession }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        console.error('getSession error:', sessionError);
-      }
-
-      if (existingSession) {
-        console.log('✓ Existing session found for:', existingSession.user?.email);
-        setUserEmail(existingSession.user?.email || null);
-        setPageState('ready');
-        cleanHash();
-        return;
-      }
-
-      // Step 5: No existing session - manually set session from hash tokens
-      if (accessToken && refreshToken) {
-        console.log('Setting session manually from hash tokens...');
-
-        const { data: sessionData, error: setSessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-        if (setSessionError) {
-          console.error('✗ setSession error:', setSessionError.message);
-          setError('Invalid or expired reset link. Please request a new one.');
-          setPageState('error');
-          cleanHash();
-          return;
-        }
-
-        if (sessionData.session) {
-          console.log('✓ Session set successfully for:', sessionData.session.user?.email);
-          setUserEmail(sessionData.session.user?.email || null);
-          setPageState('ready');
-          cleanHash();
-          return;
-        }
-      }
-
-      // Step 6: No tokens in hash - maybe user navigated here directly
-      console.log('No tokens found, checking session one more time...');
-
-      // Wait a moment for any async Supabase processing
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const { data: { session: retrySession } } = await supabase.auth.getSession();
-      if (retrySession) {
-        console.log('✓ Session found on retry for:', retrySession.user?.email);
-        setUserEmail(retrySession.user?.email || null);
-        setPageState('ready');
-        cleanHash();
-        return;
-      }
-
-      // Step 7: No valid session found
-      console.error('✗ No valid session found after all attempts');
-      setError('Invalid or expired reset link. Please request a new one.');
-      setPageState('error');
-      cleanHash();
-    };
-
-    const cleanHash = () => {
-      if (window.location.hash) {
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-    };
-
-    initializeResetPage();
-  }, [searchParams]);
+  const token = searchParams.get('token');
 
   const validatePassword = (password: string): string | null => {
     if (password.length < 12) return 'Password must be at least 12 characters';
@@ -159,39 +60,22 @@ function ResetPasswordContent() {
         return;
       }
 
-      // Verify session exists before update
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('Session expired. Please request a new reset link.');
+      if (!token) {
+        setError('No reset token found. Please request a new reset link.');
         setIsLoading(false);
         return;
       }
 
-      console.log('Updating password for:', session.user?.email);
-
-      // Update password
-      const { error: updateError } = await supabase.auth.updateUser({
+      // Call backend reset-password endpoint
+      await api.post('/auth/reset-password', {
+        token,
         password: formData.password,
       });
 
-      if (updateError) {
-        console.error('Password update error:', updateError);
-        if (updateError.message.toLowerCase().includes('same')) {
-          setError('New password must be different from current password');
-        } else {
-          setError(updateError.message);
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('✓ Password updated successfully');
-
-      // Sign out all sessions (security)
-      await supabase.auth.signOut({ scope: 'global' });
-
       // Clear local storage
       localStorage.removeItem('auth-storage');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
 
       // Show success
       setPageState('success');
@@ -203,23 +87,21 @@ function ResetPasswordContent() {
 
     } catch (err) {
       console.error('Reset error:', err);
-      setError('An unexpected error occurred. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      if (errorMessage.toLowerCase().includes('expired') || errorMessage.toLowerCase().includes('invalid')) {
+        setError('This reset link is invalid or has expired. Please request a new one.');
+      } else if (errorMessage.toLowerCase().includes('reuse') || errorMessage.toLowerCase().includes('last 5')) {
+        setError(errorMessage);
+      } else {
+        setError('Failed to reset password. Please try again.');
+      }
       setIsLoading(false);
     }
   };
 
   // === RENDER STATES ===
 
-  if (pageState === 'loading') {
-    return (
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-        <p className="mt-4 text-sm text-gray-600">Verifying reset link...</p>
-      </div>
-    );
-  }
-
-  if (pageState === 'error') {
+  if (pageState === 'error' && !token) {
     return (
       <div>
         <div className="text-center">
@@ -232,7 +114,7 @@ function ResetPasswordContent() {
             Invalid or expired link
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            {error || 'This password reset link is invalid or has expired.'}
+            This password reset link is invalid or has expired.
           </p>
         </div>
         <div className="mt-8 text-center">
@@ -277,7 +159,7 @@ function ResetPasswordContent() {
           Reset your password
         </h2>
         <p className="mt-2 text-sm text-gray-600">
-          {userEmail ? `Enter a new password for ${userEmail}` : 'Enter your new password below.'}
+          Enter your new password below.
         </p>
       </div>
 

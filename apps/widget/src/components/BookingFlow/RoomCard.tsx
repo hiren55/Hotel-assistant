@@ -1,5 +1,4 @@
 // Room card and selection components
-import { Button } from '../common';
 import { formatCurrency, cn } from '../../utils';
 import type { Room } from '../../types';
 
@@ -13,10 +12,8 @@ export function RoomCard({ room, selected, onSelect }: RoomCardProps) {
   return (
     <div
       className={cn(
-        'border rounded-lg p-3 cursor-pointer transition-all',
-        selected
-          ? 'border-primary bg-primary/5 ring-2 ring-primary'
-          : 'border-gray-200 hover:border-primary/50'
+        'room-card',
+        selected ? 'room-card--selected' : ''
       )}
       onClick={() => onSelect(room)}
       role="button"
@@ -24,73 +21,48 @@ export function RoomCard({ room, selected, onSelect }: RoomCardProps) {
       onKeyDown={(e) => e.key === 'Enter' && onSelect(room)}
       aria-selected={selected}
     >
-      {/* Room Image */}
-      {room.images?.[0] && (
-        <img
-          src={room.images[0]}
-          alt={room.name}
-          className="w-full h-24 object-cover rounded-md mb-2"
-        />
-      )}
-
-      <div className="space-y-1">
-        <div className="flex justify-between items-start">
-          <div>
-            <h4 className="font-semibold text-sm text-gray-900">{room.name}</h4>
-            <p className="text-xs text-gray-500">{room.type}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-bold text-primary">
-              {formatCurrency(room.basePrice)}
-            </p>
-            <p className="text-xs text-gray-500">per night</p>
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-600 line-clamp-2">{room.description}</p>
-
-        {/* Amenities */}
-        {room.amenities?.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {room.amenities.slice(0, 3).map((amenity) => (
-              <span
-                key={amenity}
-                className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded"
-              >
-                {amenity}
-              </span>
-            ))}
-            {room.amenities.length > 3 && (
-              <span className="text-xs text-gray-500">
-                +{room.amenities.length - 3} more
-              </span>
-            )}
-          </div>
+      {/* Large Hero Image */}
+      <div className="room-card-img-wrap">
+        {room.images?.[0] ? (
+          <img
+            src={room.images[0]}
+            alt={room.name}
+            className="room-card-img"
+          />
+        ) : (
+          <div className="room-card-img-placeholder" />
         )}
-
-        {/* Capacity */}
-        <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-          </svg>
-          Up to {room.maxOccupancy} guests
-        </p>
+        <div className="room-card-pill">AVAILABLE</div>
       </div>
 
-      {selected && (
-        <div className="mt-2 pt-2 border-t border-primary/20">
-          <p className="text-xs text-primary font-medium flex items-center gap-1">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Selected
-          </p>
+      <div className="room-card-body">
+        <h4 className="room-card-title">{room.name}</h4>
+        
+        {/* Subtle Map Pin + Description / Location */}
+        <p className="room-card-location">
+          <svg className="room-card-pin" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+          </svg>
+          {room.type} • City View
+        </p>
+
+        {/* Bottom row: Price and Select */}
+        <div className="room-card-bottom">
+          <div className="room-card-price-wrap">
+            <span className="room-card-price">{formatCurrency(room.basePrice)}</span>
+            <span className="room-card-price-label"> /night</span>
+          </div>
+          <button 
+            className="room-card-select-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(room);
+            }}
+          >
+            Select
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -99,7 +71,6 @@ interface RoomSelectionProps {
   rooms: Room[];
   selectedRoomId?: string;
   onSelect: (room: Room) => void;
-  onConfirm: () => void;
   isLoading?: boolean;
 }
 
@@ -107,36 +78,31 @@ export function RoomSelection({
   rooms,
   selectedRoomId,
   onSelect,
-  onConfirm,
-  isLoading,
 }: RoomSelectionProps) {
-  const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
+  if (rooms.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="space-y-3">
-      <h3 className="font-semibold text-gray-900">Select a Room</h3>
-
-      {rooms.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-4">
-          No rooms available for selected dates
-        </p>
-      ) : (
-        <div className="space-y-2 max-h-60 overflow-y-auto">
-          {rooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              selected={room.id === selectedRoomId}
-              onSelect={onSelect}
-            />
+    <div className="room-carousel-container">
+      <div className="room-carousel">
+        {rooms.map((room) => (
+          <RoomCard
+            key={room.id}
+            room={room}
+            selected={room.id === selectedRoomId}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+      
+      {/* Decorative Pagination Dots */}
+      {rooms.length > 1 && (
+        <div className="room-carousel-dots">
+          {rooms.map((_, i) => (
+            <span key={i} className={`room-dot ${i === 0 ? 'active' : ''}`}></span>
           ))}
         </div>
-      )}
-
-      {selectedRoom && (
-        <Button onClick={onConfirm} fullWidth isLoading={isLoading}>
-          Continue with {selectedRoom.name}
-        </Button>
       )}
     </div>
   );

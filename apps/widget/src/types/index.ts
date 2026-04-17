@@ -22,6 +22,8 @@ export interface Message {
   content: string;
   timestamp: Date;
   intent?: string;
+  metadata?: Record<string, any>;
+  bookingState?: BookingState;
 }
 
 export interface ChatResponse {
@@ -43,6 +45,7 @@ export interface BookingState {
   guestPhone?: string;
   adults?: number;
   children?: number;
+  travelingFrom?: string;
   specialRequests?: string;
 }
 

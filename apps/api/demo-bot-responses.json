@@ -1,0 +1,192 @@
+{
+    "database": {
+        "hotel": {
+            "id": "hotel_silver_done_01",
+            "name": "Silver-Done Hotel & Spa",
+            "location": "123 Oceanfront Ave, Miami, FL",
+            "contact": {
+                "phone": "+1-800-555-0199",
+                "email": "reservations@silver-done.com"
+            },
+            "policies": {
+                "checkIn": "15:00",
+                "checkOut": "11:00",
+                "cancellation": "Free cancellation up to 48 hours before check-in. Late cancellations will be charged one night's stay.",
+                "pets": "Pets are allowed with a $50 non-refundable deposit."
+            },
+            "amenities": [
+                "Free High-speed WiFi",
+                "Outdoor Pool",
+                "Fitness Center",
+                "On-site Spa",
+                "Restaurant & Bar",
+                "Valet Parking"
+            ]
+        },
+        "roomTypes": [
+            {
+                "id": "rt_standard",
+                "name": "Standard Room",
+                "description": "Comfortable room with essential amenities, perfect for short stays.",
+                "maxGuests": 2,
+                "basePrice": 99.99,
+                "currency": "USD",
+                "bedType": "1 Queen Bed",
+                "amenities": [
+                    "Air Conditioning",
+                    "TV",
+                    "Mini-fridge",
+                    "Desk",
+                    "Garden View"
+                ]
+            },
+            {
+                "id": "rt_deluxe",
+                "name": "Deluxe Room",
+                "description": "Spacious room with upgraded amenities and premium views.",
+                "maxGuests": 2,
+                "basePrice": 149.99,
+                "currency": "USD",
+                "bedType": "1 King Bed",
+                "amenities": [
+                    "Air Conditioning",
+                    "Smart TV",
+                    "Mini-bar",
+                    "Balcony",
+                    "Ocean View",
+                    "Bathrobes"
+                ]
+            },
+            {
+                "id": "rt_suite",
+                "name": "Executive Suite",
+                "description": "Luxurious suite featuring a separate living area, panoramic views, and exclusive services.",
+                "maxGuests": 4,
+                "basePrice": 299.99,
+                "currency": "USD",
+                "bedType": "1 King Bed, 1 Sofa Bed",
+                "amenities": [
+                    "Air Conditioning",
+                    "2 Smart TVs",
+                    "Full Kitchenette",
+                    "Living Room",
+                    "Panoramic Ocean View",
+                    "Room Service",
+                    "Spa Access"
+                ]
+            }
+        ],
+        "inventory": [
+            {
+                "roomId": "101",
+                "typeId": "rt_standard",
+                "status": "available",
+                "floor": 1
+            },
+            {
+                "roomId": "102",
+                "typeId": "rt_standard",
+                "status": "occupied",
+                "floor": 1
+            },
+            {
+                "roomId": "201",
+                "typeId": "rt_deluxe",
+                "status": "available",
+                "floor": 2
+            },
+            {
+                "roomId": "202",
+                "typeId": "rt_deluxe",
+                "status": "available",
+                "floor": 2
+            },
+            {
+                "roomId": "301",
+                "typeId": "rt_suite",
+                "status": "available",
+                "floor": 3
+            }
+        ],
+        "faqs": [
+            {
+                "question": "Is breakfast included?",
+                "answer": "Yes, a complimentary buffet breakfast is served daily from 7:00 AM to 10:30 AM in our main dining area."
+            },
+            {
+                "question": "Do you have parking?",
+                "answer": "Yes, we offer both self-parking ($15/day) and valet parking ($25/day) on-site."
+            },
+            {
+                "question": "How far are you from the airport?",
+                "answer": "We are located approximately 20 minutes from Miami International Airport. We offer an airport shuttle service for $30 per trip."
+            }
+        ]
+    },
+    "botResponses": {
+        "greeting": {
+            "content": "Hello! Welcome to {HOTEL_NAME}. I'm your AI assistant. How can I help you today? You can ask about our rooms, amenities, policies, or I can help you book a stay.",
+            "suggestedResponses": [
+                "Book a room",
+                "What room types do you have?",
+                "What time is check-in?",
+                "Hotel amenities"
+            ]
+        },
+        "check_availability": {
+            "content": "I'd be happy to check room availability for you. Could you please let me know your planned check-in and check-out dates?",
+            "action": "prompt_dates"
+        },
+        "show_rooms": {
+            "content": "Great! For your dates, we have the following room types available:\n\n1. Standard Room - $99.99/night\n2. Deluxe Room - $149.99/night \n3. Executive Suite - $299.99/night\n\nWhich type of room would you prefer?",
+            "suggestedResponses": [
+                "Standard Room",
+                "Deluxe Room",
+                "Executive Suite",
+                "Tell me more about the Suite"
+            ]
+        },
+        "room_details": {
+            "content": "Our {ROOM_NAME} accommodates up to {MAX_GUESTS} guests and features a {BED_TYPE}. It comes with great amenities like: {AMENITIES}. It costs ${PRICE}/night. Would you like to proceed with booking this room?",
+            "action": "confirm_room_selection",
+            "suggestedResponses": [
+                "Yes, book this",
+                "Show other rooms"
+            ]
+        },
+        "collect_guest_info": {
+            "content": "Excellent choice! To secure your reservation for the {ROOM_NAME}, please provide your full name, email address, and a contact phone number.",
+            "action": "prompt_guest_details"
+        },
+        "confirm_booking": {
+            "content": "Thank you, {GUEST_NAME}. I have all your details. Here is your reservation summary:\n\nHotel: {HOTEL_NAME}\nRoom: {ROOM_NAME}\nCheck-in: {CHECK_IN_DATE}\nCheck-out: {CHECK_OUT_DATE}\nTotal Cost: ${TOTAL_PRICE}\n\nShall I go ahead and confirm this booking?",
+            "action": "finalize_booking",
+            "suggestedResponses": [
+                "Confirm Booking",
+                "Cancel"
+            ]
+        },
+        "booking_success": {
+            "content": "Your booking is confirmed! Your confirmation number is #{CONFIRMATION_NUMBER}. We've sent an email to {GUEST_EMAIL} with all the details. We look forward to welcoming you to Silver-Done Hotel & Spa!",
+            "suggestedResponses": [
+                "Thank you!",
+                "What are your check-in policies?"
+            ]
+        },
+        "policy_inquiry": {
+            "content": "Our standard check-in time is {CHECK_IN_TIME} and check-out is at {CHECK_OUT_TIME}. Our cancellation policy allows for {CANCELLATION_POLICY}. Let me know if you need to know about anything else, like our pet policy or parking!",
+            "suggestedResponses": [
+                "Pet policy",
+                "Parking",
+                "Book a room"
+            ]
+        },
+        "fallback": {
+            "content": "I'm sorry, I didn't quite catch that. I am just a demo bot right now, but I can help you book a room, check our room types, or answer common questions about the hotel.",
+            "suggestedResponses": [
+                "Book a room",
+                "Hotel FAQs"
+            ]
+        }
+    }
+}

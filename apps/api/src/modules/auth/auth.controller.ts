@@ -32,7 +32,7 @@ import { Throttle } from '@nestjs/throttler';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Public()
   @Post('login')
@@ -128,13 +128,14 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   async getCurrentUser(
     @CurrentUser() user: any,
-  ): Promise<{ id: string; email: string; name: string; role: string; hotelId: string | null }> {
+  ): Promise<{ id: string; email: string; name: string; role: string; hotelId: string | null; onboardingComplete: boolean }> {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       hotelId: user.hotelId,
+      onboardingComplete: user.onboardingComplete,
     };
   }
 
@@ -151,7 +152,6 @@ export class AuthController {
   ): Promise<{ message: string }> {
     const refreshToken = req.cookies?.refreshToken;
 
-    // Use user.id (from validateUser) - the JWT strategy returns user object with id field
     await this.authService.logout(user.id, refreshToken);
 
     // Clear refresh token cookie
@@ -170,7 +170,6 @@ export class AuthController {
     @CurrentUser() user: any,
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ message: string }> {
-    // Use user.id (from validateUser) - the JWT strategy returns user object with id field
     await this.authService.logout(user.id);
 
     // Clear refresh token cookie
@@ -247,20 +246,6 @@ export class AuthController {
     return this.authService.verifyEmail(token);
   }
 
-  @Post('sync-verification')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Sync verification status', description: 'Sync email verification status from Supabase to local database' })
-  @ApiResponse({ status: 200, description: 'Status synced successfully' })
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
-  async syncVerificationStatus(
-    @CurrentUser() user: any,
-    @Body() body: { isEmailVerified: boolean },
-  ): Promise<{ user: any; updated: boolean }> {
-    return this.authService.syncUserVerificationStatus(user.id, body.isEmailVerified);
-  }
-
   @Public()
   @Get('check-email')
   @HttpCode(HttpStatus.OK)
@@ -278,19 +263,6 @@ export class AuthController {
       return { exists: false };
     }
     return result;
-  }
-
-  @Public()
-  @Post('sync-user')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Sync user after email verification', description: 'Sync user data after email verification from Supabase' })
-  @ApiResponse({ status: 200, description: 'User synced successfully' })
-  @ApiResponse({ status: 404, description: 'User not found' })
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 requests per minute
-  async syncUser(
-    @Body() body: { supabaseUserId: string; email: string },
-  ): Promise<{ user: any; synced: boolean }> {
-    return this.authService.syncUserAfterVerification(body.supabaseUserId, body.email);
   }
 
   private setRefreshTokenCookie(res: Response, token: string): void {

@@ -16,11 +16,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'pg_isready -U ${POSTGRES_USER:-hotel_user} -d ${POSTGRES_DB:-hotel_assistant}',
-        ]
+      test: [ 'CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hotel_user} -d ${POSTGRES_DB:-hotel_assistant}' ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,7 +32,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: [ 'CMD', 'redis-cli', 'ping' ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -51,6 +47,28 @@ services:
       - '8025:8025' # Web UI
     profiles:
       - dev
+
+  # Python Scraper Microservice (Crawl4AI + Gemini)
+  scraper:
+    build: ./apps/scraper
+    container_name: hotel-assistant-scraper
+    restart: unless-stopped
+    ports:
+      - '3003:3003'
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_SEARCH_API_KEY=${GOOGLE_SEARCH_API_KEY:-}
+      - GOOGLE_SEARCH_ENGINE_ID=${GOOGLE_SEARCH_ENGINE_ID:-}
+      - NESTJS_API_URL=http://api:3001
+      - SCRAPER_PORT=3003
+      - MAX_CRAWL_PAGES=${MAX_CRAWL_PAGES:-50}
+      - CRON_ENABLED=${CRON_ENABLED:-false}
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 2 * * 0}
+    healthcheck:
+      test: [ 'CMD', 'python', '-c', 'import httpx; httpx.get("http://localhost:3003/health")' ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:

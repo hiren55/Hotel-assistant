@@ -13,7 +13,9 @@ import {
   Menu,
   X,
   User,
-  ChevronDown,
+  Search,
+  Bell,
+  Globe,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import {
@@ -25,14 +27,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useAuthStore } from '@/lib/auth-store';
+import { WidgetColorProvider } from '@/lib/context/WidgetColorContext';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Hotel', href: '/hotel', icon: Hotel },
-  { name: 'Rooms', href: '/rooms', icon: BedDouble },
-  { name: 'Bookings', href: '/bookings', icon: CalendarCheck },
-  { name: 'AI Bot', href: '/bot', icon: Bot },
-  { name: 'Settings', href: '/settings', icon: Settings },
+const navigationItems = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['hotel_staff', 'hotel_manager', 'hotel_owner', 'super_admin'] },
+  { name: 'Hotel', href: '/hotel', icon: Hotel, roles: ['hotel_owner', 'super_admin'] },
+  { name: 'Rooms', href: '/rooms', icon: BedDouble, roles: ['hotel_manager', 'hotel_owner', 'super_admin'] },
+  { name: 'Bookings', href: '/bookings', icon: CalendarCheck, roles: ['hotel_staff', 'hotel_manager', 'hotel_owner', 'super_admin'] },
+  { name: 'AI Bot', href: '/bot', icon: Bot, roles: ['hotel_owner', 'super_admin'] },
+  { name: 'Settings', href: '/settings', icon: Settings, roles: ['hotel_owner', 'super_admin'] },
 ];
 
 function classNames(...classes: string[]) {
@@ -65,11 +68,34 @@ export default function DashboardLayout({
     if (!isInitialized) return;
 
     const interval = setInterval(() => {
-      checkAuthStatus();
+      void checkAuthStatus();
     }, 60000); // Check every minute
 
     return () => clearInterval(interval);
   }, [isInitialized, checkAuthStatus]);
+
+  // Filter navigation based on role
+  const userRole = authUser?.role || 'hotel_staff';
+  const navigation = navigationItems.filter(item => item.roles.includes(userRole));
+
+  // Role-based route protection
+  useEffect(() => {
+    if (isInitialized && isAuthenticated && authUser) {
+      const currentPath = pathname;
+      const allowedPaths = navigationItems
+        .filter(item => item.roles.includes(authUser.role))
+        .map(item => item.href);
+      
+      // Check if current path starts with any allowed path
+      const isAllowed = allowedPaths.some(path => currentPath.startsWith(path));
+      
+      // Special case: /dashboard is always allowed after auth
+      if (!isAllowed && currentPath !== '/dashboard' && currentPath !== '/') {
+        console.warn(`Unauthorized access attempt to ${currentPath} by role ${authUser.role}. Redirecting...`);
+        router.push('/dashboard');
+      }
+    }
+  }, [isInitialized, isAuthenticated, authUser, pathname, router]);
 
   // Redirect to login if not authenticated, or to verify-email if not verified
   useEffect(() => {
@@ -79,14 +105,22 @@ export default function DashboardLayout({
       } else if (!isEmailVerified) {
         // User is authenticated but email not verified - redirect to verify-email
         router.push('/verify-email');
+      } else if (authUser && !authUser.onboardingComplete) {
+        // User is authenticated but hasn't completed onboarding
+        router.push('/onboarding');
       }
     }
-  }, [isInitialized, isAuthenticated, isEmailVerified, router]);
+  }, [isInitialized, isAuthenticated, isEmailVerified, authUser, router]);
 
   // Derive display user from auth state
   const user = {
     name: authUser?.name || 'User',
     email: authUser?.email || '',
+    roleLabel: authUser?.role === 'hotel_owner' ? 'Owner' : 
+               authUser?.role === 'hotel_manager' ? 'Manager' : 
+               authUser?.role === 'hotel_staff' ? 'Staff' : 'Super Admin',
+    jobTitle: authUser?.jobTitle || (authUser?.role === 'hotel_owner' ? 'Owner' : 
+                                   authUser?.role === 'hotel_manager' ? 'Manager' : 'Staff'),
     initials: authUser?.name
       ? authUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
       : 'U',
@@ -144,7 +178,7 @@ export default function DashboardLayout({
       <div
         className={classNames(
           'fixed inset-0 z-50 lg:hidden',
-          sidebarOpen ? '' : 'pointer-events-none'
+          sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         )}
       >
         <div
@@ -156,29 +190,32 @@ export default function DashboardLayout({
         />
         <div
           className={classNames(
-            'fixed inset-y-0 left-0 flex w-full max-w-xs flex-col bg-white transition-transform',
+            'fixed inset-y-0 left-0 flex w-full max-w-xs flex-col bg-[#1C2539] transition-transform',
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}
         >
           <div className="flex h-16 shrink-0 items-center justify-between px-6">
-            <span className="text-xl font-bold text-primary">Hotel Assistant</span>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
+            <div className="flex flex-col items-start pt-2">
+              <span className="text-xl font-bold text-white">Concierge AI</span>
+              <span className="text-[10px] uppercase tracking-widest text-[#8a98bc]">Premium Edition</span>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white">
               <X className="h-6 w-6" />
             </button>
           </div>
           <nav className="flex flex-1 flex-col px-3 py-4">
-            <ul className="flex flex-1 flex-col gap-y-1">
+            <ul className="flex flex-1 flex-col gap-y-2">
               {navigation.map((item) => (
                 <li key={item.name}>
                   <Link
                     href={item.href}
                     className={classNames(
                       pathname.startsWith(item.href)
-                        ? 'bg-primary text-white'
-                        : 'text-gray-700 hover:bg-gray-100',
-                      'group flex gap-x-3 rounded-md p-3 text-sm font-semibold'
+                        ? 'bg-[#293450] text-white border-l-4 border-indigo-400'
+                        : 'text-[#8a98bc] hover:bg-[#202b44] hover:text-white',
+                      'group flex gap-x-3 rounded-md p-3 text-sm font-medium'
                     )}
-                    onClick={() => setSidebarOpen(false)}
+                    onClick={() => void setSidebarOpen(false)}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
                     {item.name}
@@ -188,7 +225,7 @@ export default function DashboardLayout({
               <li className="mt-auto">
                 <button
                   onClick={handleLogout}
-                  className="group flex w-full gap-x-3 rounded-md p-3 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                  className="group flex w-full gap-x-3 rounded-md p-3 text-sm font-medium text-[#8a98bc] hover:bg-[#202b44] hover:text-white"
                 >
                   <LogOut className="h-5 w-5 shrink-0" />
                   Log out
@@ -201,23 +238,27 @@ export default function DashboardLayout({
 
       {/* Desktop sidebar */}
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r border-gray-200 bg-white px-6">
-          <div className="flex h-16 shrink-0 items-center">
-            <span className="text-xl font-bold text-primary">Hotel Assistant</span>
+        <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-[#1C2539] px-6">
+          <div className="flex h-20 shrink-0 flex-col justify-center pt-2">
+            <span className="text-xl font-bold text-white tracking-wide">Concierge AI</span>
+            <span className="text-[10px] font-semibold text-[#8a98bc] uppercase tracking-widest mt-1">Premium Edition</span>
           </div>
           <nav className="flex flex-1 flex-col">
-            <ul className="flex flex-1 flex-col gap-y-1">
+            <ul className="flex flex-1 flex-col gap-y-2">
               {navigation.map((item) => (
                 <li key={item.name}>
                   <Link
                     href={item.href}
                     className={classNames(
                       pathname.startsWith(item.href)
-                        ? 'bg-primary text-white'
-                        : 'text-gray-700 hover:bg-gray-100',
-                      'group flex gap-x-3 rounded-md p-3 text-sm font-semibold'
+                        ? 'bg-[#26314D] text-white'
+                        : 'text-[#8a98bc] hover:bg-[#202b44] hover:text-white',
+                      'group flex gap-x-3 rounded-md p-3 text-sm font-medium relative'
                     )}
                   >
+                    {pathname.startsWith(item.href) && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-white rounded-r-sm"></div>
+                    )}
                     <item.icon className="h-5 w-5 shrink-0" />
                     {item.name}
                   </Link>
@@ -226,10 +267,10 @@ export default function DashboardLayout({
               <li className="mt-auto">
                 <button
                   onClick={handleLogout}
-                  className="group flex w-full gap-x-3 rounded-md p-3 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                  className="group flex w-full gap-x-3 rounded-md p-3 text-sm font-medium text-[#8a98bc] hover:bg-[#202b44] hover:text-white mb-6"
                 >
                   <LogOut className="h-5 w-5 shrink-0" />
-                  Log out
+                  Logout
                 </button>
               </li>
             </ul>
@@ -238,8 +279,8 @@ export default function DashboardLayout({
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
-        <div className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:px-8">
+      <div className="lg:pl-64 flex flex-col min-h-screen bg-[#F8F9FD]">
+        <div className="sticky top-0 z-40 flex h-16 bg-[#EEF0F8] shrink-0 items-center gap-x-4 px-4 sm:gap-x-6 sm:px-6 lg:px-8">
           <button
             type="button"
             className="text-gray-700 lg:hidden"
@@ -247,20 +288,44 @@ export default function DashboardLayout({
           >
             <Menu className="h-6 w-6" />
           </button>
-          <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
-            <div className="flex flex-1" />
+
+          <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6 items-center">
+            <div className="flex flex-1">
+              <div className="w-full max-w-lg relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <input
+                  type="text"
+                  placeholder="Search analytics or guests..."
+                  className="w-full bg-[#E0E4F0] text-sm text-gray-700 rounded-full pl-10 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-gray-400"
+                />
+              </div>
+            </div>
+
             <div className="flex items-center gap-x-4 lg:gap-x-6">
+              <button className="text-gray-500 hover:text-gray-700 relative">
+                <Bell className="h-5 w-5" />
+                <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-[#EEF0F8]"></span>
+              </button>
+              <button className="text-gray-500 hover:text-gray-700">
+                <Globe className="h-5 w-5" />
+              </button>
+
+              <div className="h-6 w-px bg-gray-300" aria-hidden="true" />
               <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-x-2 outline-none">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+                <DropdownMenuTrigger className="flex items-center gap-x-3 outline-none hover:bg-gray-200/50 p-1 pr-2 rounded-full transition-colors leading-tight">
+                  <div className="hidden sm:flex flex-col items-end text-right">
+                    <span className="text-sm font-semibold text-gray-800">
+                      {user.name}
+                    </span>
+                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                      {user.jobTitle}
+                    </span>
+                  </div>
+                  <Avatar className="h-9 w-9 border-2 border-white shadow-sm ring-1 ring-gray-200">
+                    <AvatarFallback className="bg-blue-600 text-white text-sm font-medium">
                       {user.initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:block text-sm font-medium text-gray-700">
-                    {user.name}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-gray-500" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="px-2 py-1.5">
@@ -285,8 +350,10 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        <main className="py-8">
-          <div className="px-4 sm:px-6 lg:px-8">{children}</div>
+        <main className="py-8 bg-[#F8F9FD] flex-1">
+          <div className="px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+            <WidgetColorProvider>{children}</WidgetColorProvider>
+          </div>
         </main>
       </div>
     </div>

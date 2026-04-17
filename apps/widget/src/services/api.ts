@@ -77,13 +77,15 @@ class WidgetAPI {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new APIError(
-          errorData.message || `HTTP error ${response.status}`,
+          errorData.error?.message || errorData.message || `HTTP error ${response.status}`,
           response.status,
-          errorData.code
+          errorData.error?.code || errorData.code
         );
       }
 
-      return response.json();
+      const json = await response.json();
+      // Backend wraps responses in { success, data, meta } via TransformInterceptor
+      return json.data !== undefined ? json.data : json;
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
@@ -131,7 +133,7 @@ class WidgetAPI {
   // Hotel endpoints
   async getHotelBranding(): Promise<HotelBranding> {
     try {
-      return await this.request<HotelBranding>(`/hotels/${this.hotelId}/branding`);
+      return await this.request<HotelBranding>(`/chat/${this.hotelId}/branding`);
     } catch {
       // Return defaults if branding endpoint doesn't exist
       return {
@@ -144,7 +146,7 @@ class WidgetAPI {
   // Room endpoints
   async getRooms(): Promise<Room[]> {
     const response = await this.request<{ rooms: Room[] }>(
-      `/rooms/${this.hotelId}`
+      `/chat/${this.hotelId}/rooms`
     );
     return response.rooms || [];
   }

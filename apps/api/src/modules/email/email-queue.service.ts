@@ -56,10 +56,31 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     try {
       const redisUrl = this.configService.get<string>('redis.url');
-      if (redisUrl) {
-        this.redis = new Redis(redisUrl);
-        this.logger.log('Email queue connected to Redis');
-        this.startProcessing();
+      if (redisUrl && redisUrl.trim() !== '') {
+        this.redis = new Redis(redisUrl, {
+          lazyConnect: true,
+          maxRetriesPerRequest: 1, // Don't retry infinitely so it can fail fast
+          retryStrategy: () => null, // Disable retries
+        });
+        
+        try {
+          await this.redis.connect();
+          this.logger.log('Email queue connected to Redis');
+          this.startProcessing();
+          
+          this.redis.on('error', (err) => {
+            if (this.redis) {
+              this.logger.warn('Redis connection lost, switching to synchronous email processing. Error: ' + err.message);
+              this.redis.disconnect();
+              this.redis = null;
+              this.stopProcessing();
+            }
+          });
+        } catch (connectionError) {
+          this.logger.warn('Failed to connect to Redis initially. Email queue disabled, sending synchronously.');
+          this.redis.disconnect();
+          this.redis = null;
+        }
       } else {
         this.logger.warn('Redis not configured - email queue disabled, sending synchronously');
       }
@@ -98,9 +119,17 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
     };
 
     if (this.redis) {
-      await this.redis.lpush(this.QUEUE_KEY, JSON.stringify(job));
-      this.logger.debug(`Email queued: ${job.id}`, { template, to });
-      return job.id;
+      try {
+        await this.redis.lpush(this.QUEUE_KEY, JSON.stringify(job));
+        this.logger.debug(`Email queued: ${job.id}`, { template, to });
+        return job.id;
+      } catch (err) {
+        this.logger.warn(`Redis push failed: ${err.message}. Treating as synchronous fallback.`);
+        this.redis.disconnect();
+        this.redis = null;
+        await this.processJob(job);
+        return job.id;
+      }
     } else {
       // Fallback: send synchronously if Redis not available
       this.logger.debug('Sending email synchronously (no queue)', { template, to });

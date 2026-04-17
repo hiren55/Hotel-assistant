@@ -1,8 +1,6 @@
-'use client';
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { roomsApi, RoomFilters } from '@/lib/api';
-import type { CreateRoomData, UpdateRoomData, RoomStatus } from '@/types';
+import { roomsApi, type RoomFilters } from '../api/rooms';
+import type { CreateRoomDto, UpdateRoomDto, Room } from '@hotel-assistant/shared';
 
 export const roomKeys = {
   all: ['rooms'] as const,
@@ -34,9 +32,9 @@ export function useCreateRoom(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateRoomData) => roomsApi.createRoom(hotelId, data),
+    mutationFn: (data: CreateRoomDto) => roomsApi.createRoom(hotelId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
     },
   });
 }
@@ -45,11 +43,10 @@ export function useUpdateRoom(hotelId: string, roomId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateRoomData) =>
-      roomsApi.updateRoom(hotelId, roomId, data),
+    mutationFn: (data: UpdateRoomDto) => roomsApi.updateRoom(hotelId, roomId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      void queryClient.invalidateQueries({
         queryKey: roomKeys.detail(hotelId, roomId),
       });
     },
@@ -62,7 +59,7 @@ export function useDeleteRoom(hotelId: string) {
   return useMutation({
     mutationFn: (roomId: string) => roomsApi.deleteRoom(hotelId, roomId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
     },
   });
 }
@@ -71,10 +68,10 @@ export function useUpdateRoomStatus(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ roomId, status }: { roomId: string; status: RoomStatus }) =>
+    mutationFn: ({ roomId, status }: { roomId: string; status: Room['status'] }) =>
       roomsApi.updateStatus(hotelId, roomId, status),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
     },
   });
 }
@@ -83,10 +80,10 @@ export function useBulkUpdateRoomStatus(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ roomIds, status }: { roomIds: string[]; status: RoomStatus }) =>
+    mutationFn: ({ roomIds, status }: { roomIds: string[]; status: Room['status'] }) =>
       roomsApi.bulkUpdateStatus(hotelId, roomIds, status),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: roomKeys.lists() });
     },
   });
 }

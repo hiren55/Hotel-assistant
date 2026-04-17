@@ -14,14 +14,6 @@ export default () => ({
     url: process.env.DATABASE_URL,
   },
 
-  // Supabase
-  supabase: {
-    url: process.env.SUPABASE_URL,
-    anonKey: process.env.SUPABASE_ANON_KEY,
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    jwtSecret: process.env.SUPABASE_JWT_SECRET,
-  },
-
   // Redis
   redis: {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
@@ -36,14 +28,9 @@ export default () => ({
 
   // AI Provider
   ai: {
-    provider: process.env.AI_PROVIDER || 'openai',
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY,
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-    },
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.ANTHROPIC_MODEL || 'claude-3-haiku-20240307',
+    gemini: {
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
     },
   },
 
@@ -53,6 +40,13 @@ export default () => ({
     resend: {
       apiKey: process.env.RESEND_API_KEY,
       webhookSecret: process.env.RESEND_WEBHOOK_SECRET,
+    },
+    smtp: {
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
     },
     from: process.env.EMAIL_FROM || 'noreply@hotelassistant.com',
     rateLimitPerMinute: parseInt(process.env.EMAIL_RATE_LIMIT_PER_MINUTE || '30', 10),

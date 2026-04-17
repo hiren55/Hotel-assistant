@@ -1,8 +1,6 @@
-'use client';
-
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { bookingsApi, BookingFilters } from '@/lib/api';
-import type { CreateBookingData, Booking } from '@/types';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { bookingsApi, type BookingFilters } from '../api/bookings';
+import type { CreateBookingDto, UpdateBookingDto, BookingStatus, Booking } from '@hotel-assistant/shared';
 
 export const bookingKeys = {
   all: ['bookings'] as const,
@@ -21,6 +19,18 @@ export function useBookings(hotelId: string, filters?: BookingFilters) {
     queryKey: bookingKeys.list(hotelId, filters),
     queryFn: () => bookingsApi.getBookings(hotelId, filters),
     enabled: !!hotelId,
+    placeholderData: keepPreviousData, // Keep old data visible while refetching (no flash)
+    // Add retry logic to handle transient errors
+    retry: (failureCount, error) => {
+      // Check if error is retryable (network errors, rate limits, etc.)
+      if (error instanceof Error) {
+        const isRetryable = !error.message.toLowerCase().includes('not found') &&
+                           !error.message.toLowerCase().includes('validation');
+        return isRetryable && failureCount < 3;
+      }
+      return false;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 }
 
@@ -32,7 +42,7 @@ export function useBooking(hotelId: string, bookingId: string) {
   });
 }
 
-export function useUpcomingCheckIns(hotelId: string, days: number = 7) {
+export function useUpcomingCheckIns(hotelId: string, days = 7) {
   return useQuery({
     queryKey: bookingKeys.upcoming(hotelId, days),
     queryFn: () => bookingsApi.getUpcomingCheckIns(hotelId, days),
@@ -44,10 +54,9 @@ export function useCreateBooking(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateBookingData) =>
-      bookingsApi.createBooking(hotelId, data),
+    mutationFn: (data: CreateBookingDto) => bookingsApi.createBooking(hotelId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
     },
   });
 }
@@ -56,11 +65,10 @@ export function useUpdateBooking(hotelId: string, bookingId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: Partial<Booking>) =>
-      bookingsApi.updateBooking(hotelId, bookingId, data),
+    mutationFn: (data: UpdateBookingDto) => bookingsApi.updateBooking(hotelId, bookingId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({
         queryKey: bookingKeys.detail(hotelId, bookingId),
       });
     },
@@ -71,10 +79,10 @@ export function useCancelBooking(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ bookingId, reason }: { bookingId: string; reason?: string }) =>
-      bookingsApi.cancelBooking(hotelId, bookingId, reason),
+    mutationFn: ({ bookingId }: { bookingId: string; _reason?: string }) =>
+      bookingsApi.cancelBooking(hotelId, bookingId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
     },
   });
 }
@@ -83,10 +91,9 @@ export function useConfirmBooking(hotelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (bookingId: string) =>
-      bookingsApi.confirmBooking(hotelId, bookingId),
+    mutationFn: (bookingId: string) => bookingsApi.confirmBooking(hotelId, bookingId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
     },
   });
 }
@@ -97,7 +104,7 @@ export function useCheckIn(hotelId: string) {
   return useMutation({
     mutationFn: (bookingId: string) => bookingsApi.checkIn(hotelId, bookingId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
     },
   });
 }
@@ -108,7 +115,7 @@ export function useCheckOut(hotelId: string) {
   return useMutation({
     mutationFn: (bookingId: string) => bookingsApi.checkOut(hotelId, bookingId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
+      void queryClient.invalidateQueries({ queryKey: bookingKeys.lists() });
     },
   });
 }

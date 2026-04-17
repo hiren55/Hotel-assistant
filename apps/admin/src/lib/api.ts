@@ -1,6 +1,10 @@
+import type { User as SharedUser } from '@hotel-assistant/shared';
+
+export type { SharedUser as User };
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
-interface ApiResponse<T> {
+interface AdminApiResponse<T> {
   success: boolean;
   data: T;
   meta?: {
@@ -9,7 +13,7 @@ interface ApiResponse<T> {
   };
 }
 
-interface ApiError {
+interface AdminApiError {
   success: false;
   error: {
     message: string;
@@ -54,13 +58,23 @@ class ApiClient {
       credentials: 'include',
     });
 
-    const data = await response.json();
+    const json: unknown = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || data.message || 'Request failed');
+      const errorJson = json as { error?: { message?: string | string[] } };
+      const errorMsg = Array.isArray(errorJson.error?.message)
+        ? errorJson.error.message.join(', ')
+        : errorJson.error?.message || 'Request failed';
+      throw new Error(errorMsg);
     }
 
-    return data;
+    // Unwrap the API envelope: { success, data, meta } → data
+    const successJson = json as AdminApiResponse<T>;
+    if (successJson && typeof successJson === 'object' && 'success' in successJson && 'data' in successJson) {
+      return successJson.data;
+    }
+
+    return json as T;
   }
 
   async get<T>(endpoint: string): Promise<T> {
@@ -109,28 +123,18 @@ export interface RegisterHotelRequest {
   hotelSlug: string;
 }
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  hotelId: string | null;
-}
-
 export interface Tokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  tokenType: string;
+  tokenType?: string;
 }
 
 export interface AuthResponse {
-  success: boolean;
-  data: {
-    user: User;
-    tokens: Tokens;
-  };
+  user: SharedUser;
+  tokens: Tokens;
 }
+
 
 export const authApi = {
   login: (data: LoginRequest) =>
@@ -140,7 +144,7 @@ export const authApi = {
     api.post<AuthResponse>('/auth/register/hotel', data),
 
   refresh: (refreshToken: string) =>
-    api.post<{ data: Tokens }>('/auth/refresh', { refreshToken }),
+    api.post<Tokens>('/auth/refresh', { refreshToken }),
 
   logout: () =>
     api.post<{ message: string }>('/auth/logout'),

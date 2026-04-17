@@ -1,13 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   AIProvider,
   AIContext,
   AIResponse,
   IntentDetectionResult,
 } from '../providers/ai-provider.interface';
-import { OpenAIProvider } from '../providers/openai.provider';
-import { ClaudeProvider } from '../providers/claude.provider';
+import { GeminiProvider } from '../providers/gemini.provider';
+import { MockProvider } from '../providers/mock.provider';
 
 const CANNED_RESPONSES = {
   error: "I apologize, but I'm having trouble processing your request right now. Please try again in a moment, or contact our reception for immediate assistance.",
@@ -20,43 +19,24 @@ const CANNED_RESPONSES = {
 @Injectable()
 export class AIService implements OnModuleInit {
   private readonly logger = new Logger(AIService.name);
-  private primaryProvider: AIProvider;
-  private fallbackProvider: AIProvider | null = null;
+  private provider: AIProvider;
   private readonly maxRetries = 2;
   private readonly retryDelay = 1000;
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly openaiProvider: OpenAIProvider,
-    private readonly claudeProvider: ClaudeProvider,
-  ) {}
+    private readonly geminiProvider: GeminiProvider,
+    private readonly mockProvider: MockProvider,
+  ) { }
 
   async onModuleInit() {
-    await this.initializeProviders();
-  }
+    const useMock = process.env.USE_MOCK_AI === 'true';
+    this.provider = useMock ? this.mockProvider : this.geminiProvider;
 
-  private async initializeProviders() {
-    const primaryName = this.configService.get<string>('ai.provider') || 'openai';
+    const available = await this.provider.isAvailable();
+    this.logger.log(`AI provider (${this.provider.name}): ${available ? 'available' : 'unavailable'}`);
 
-    if (primaryName === 'openai') {
-      this.primaryProvider = this.openaiProvider;
-      this.fallbackProvider = this.claudeProvider;
-    } else {
-      this.primaryProvider = this.claudeProvider;
-      this.fallbackProvider = this.openaiProvider;
-    }
-
-    // Check availability
-    const primaryAvailable = await this.primaryProvider.isAvailable();
-    const fallbackAvailable = this.fallbackProvider ? await this.fallbackProvider.isAvailable() : false;
-
-    this.logger.log(`Primary AI provider (${this.primaryProvider.name}): ${primaryAvailable ? 'available' : 'unavailable'}`);
-    if (this.fallbackProvider) {
-      this.logger.log(`Fallback AI provider (${this.fallbackProvider.name}): ${fallbackAvailable ? 'available' : 'unavailable'}`);
-    }
-
-    if (!primaryAvailable && !fallbackAvailable) {
-      this.logger.warn('No AI providers available - using canned responses only');
+    if (!available && !useMock) {
+      this.logger.warn('Gemini provider unavailable - check your GEMINI_API_KEY. Using canned responses only.');
     }
   }
 
@@ -75,31 +55,20 @@ export class AIService implements OnModuleInit {
       };
     }
 
-    // Try primary provider with retries
+    // Try with retries
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const response = await this.primaryProvider.generateResponse(userMessage, context);
+        const response = await this.provider.generateResponse(userMessage, context);
         return this.validateAndSanitizeResponse(response);
       } catch (error) {
-        this.logger.warn(`Primary provider attempt ${attempt} failed:`, error);
+        this.logger.warn(`Gemini attempt ${attempt} failed:`, error);
         if (attempt < this.maxRetries) {
           await this.delay(this.retryDelay * attempt);
         }
       }
     }
 
-    // Try fallback provider
-    if (this.fallbackProvider) {
-      try {
-        this.logger.log('Trying fallback provider...');
-        const response = await this.fallbackProvider.generateResponse(userMessage, context);
-        return this.validateAndSanitizeResponse(response);
-      } catch (error) {
-        this.logger.error('Fallback provider failed:', error);
-      }
-    }
-
-    // All providers failed - return canned response
+    // All attempts failed - return canned response
     return { content: CANNED_RESPONSES.error };
   }
 
@@ -115,7 +84,7 @@ export class AIService implements OnModuleInit {
 
     // Use AI for more complex intent detection
     try {
-      return await this.primaryProvider.detectIntent(message, context);
+      return await this.provider.detectIntent(message, context);
     } catch (error) {
       this.logger.warn('AI intent detection failed, using pattern matching:', error);
       return quickIntent;

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateHotelDto, HotelResponseDto } from './dto';
-import { UserRole } from '@prisma/client';
+import { UserRole, BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class HotelsService {
@@ -199,6 +199,95 @@ export class HotelsService {
       activeBookings,
       todayCheckIns,
       todayCheckOuts,
+    };
+  }
+
+  async getDashboardSummary(
+    hotelId: string,
+    userRole: UserRole,
+    userHotelId: string | null,
+  ): Promise<any> {
+    if (userRole !== UserRole.super_admin && userHotelId !== hotelId) {
+      throw new NotFoundException('Hotel not found');
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [
+      totalBookings,
+      revenueResult,
+      conversationsStats,
+      recentBookings,
+      hotel,
+    ] = await Promise.all([
+      // Task 3: Total Bookings
+      this.prisma.booking.count({
+        where: { hotelId },
+      }),
+
+      // Task 4: Total Revenue (Paid bookings)
+      this.prisma.booking.aggregate({
+        where: {
+          hotelId,
+          status: { in: [BookingStatus.confirmed, BookingStatus.checked_in, BookingStatus.checked_out, BookingStatus.completed] },
+        },
+        _sum: {
+          totalPrice: true,
+        },
+      }),
+
+      // Task 5: AI Conversations & Resolution Rate
+      this.prisma.conversation.aggregate({
+        where: { hotelId },
+        _count: {
+          _all: true,
+          bookingId: true, // Counts non-null bookingIds as "resolved"
+        },
+      }),
+
+      // Task 6: Recent Bookings
+      this.prisma.booking.findMany({
+        where: { hotelId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          room: {
+            select: { name: true, type: true },
+          },
+        },
+      }),
+
+      // Task 2: Hotel Info
+      this.prisma.hotel.findUnique({
+        where: { id: hotelId },
+        select: { name: true, settings: true },
+      }),
+    ]);
+
+    const totalRevenue = revenueResult._sum.totalPrice ? Number(revenueResult._sum.totalPrice) : 0;
+    const totalConversations = conversationsStats._count._all || 0;
+    const resolvedConversations = conversationsStats._count.bookingId || 0;
+    const resolutionRate = totalConversations > 0 
+      ? Math.round((resolvedConversations / totalConversations) * 100) 
+      : 0;
+
+    return {
+      hotelName: hotel?.name || '',
+      currency: (hotel?.settings as any)?.currency || 'USD',
+      totalBookings,
+      totalRevenue,
+      totalConversations,
+      resolutionRate,
+      recentBookings: recentBookings.map(b => ({
+        id: b.id,
+        guestName: b.guestName,
+        roomType: b.room?.name || b.room?.type || 'Deluxe Room',
+        checkIn: b.checkIn,
+        checkOut: b.checkOut,
+        status: b.status,
+        amount: Number(b.totalPrice),
+      })),
     };
   }
 

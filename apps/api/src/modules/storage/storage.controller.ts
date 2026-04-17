@@ -35,7 +35,7 @@ import { StorageService } from './storage.service';
 @UseGuards(JwtAuthGuard, RolesGuard, HotelAccessGuard)
 @ApiBearerAuth()
 export class StorageController {
-  constructor(private readonly storageService: StorageService) {}
+  constructor(private readonly storageService: StorageService) { }
 
   /**
    * Get a signed URL for downloading a file
@@ -145,14 +145,12 @@ export class StorageController {
   async listFiles(
     @Param('hotelId') hotelId: string,
     @Query('limit') limit: string = '100',
-    @Query('offset') offset: string = '0',
     @CurrentUser() user: any,
   ) {
     const result = await this.storageService.listFiles(
       hotelId,
       user.id,
       parseInt(limit, 10),
-      parseInt(offset, 10),
     );
 
     return {
@@ -160,7 +158,6 @@ export class StorageController {
         files: result.files,
         total: result.total,
         limit: parseInt(limit, 10),
-        offset: parseInt(offset, 10),
       },
     };
   }

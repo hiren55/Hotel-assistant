@@ -8,20 +8,20 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SendMessageDto {
-  @ApiProperty({ description: 'User message' })
+  @ApiProperty({ description: 'User message', example: 'Hi! What rooms do you have available?' })
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
   @MaxLength(2000)
   message: string;
 
-  @ApiProperty({ description: 'Session ID for conversation continuity' })
+  @ApiProperty({ description: 'Session ID for conversation continuity', example: 'session-abc-123' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
   sessionId: string;
 
-  @ApiPropertyOptional({ description: 'Visitor ID for tracking' })
+  @ApiPropertyOptional({ description: 'Visitor ID for tracking', example: 'visitor-xyz-456' })
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -29,13 +29,16 @@ export class SendMessageDto {
 }
 
 export class ChatMessageResponseDto {
-  @ApiProperty({ description: 'Assistant response message' })
+  @ApiProperty({ description: 'Assistant response message', example: 'Welcome! We have Deluxe Suites and Standard Rooms available. Would you like to know more about any of them?' })
   message: string;
 
-  @ApiPropertyOptional({ description: 'Detected intent' })
+  @ApiPropertyOptional({ description: 'Detected intent', example: 'room_inquiry' })
   intent?: string;
 
-  @ApiPropertyOptional({ description: 'Current booking flow state' })
+  @ApiPropertyOptional({
+    description: 'Current booking flow state',
+    example: { step: 'select_room', roomId: null, checkIn: null, checkOut: null },
+  })
   bookingState?: {
     step: string;
     roomId?: string;
@@ -43,7 +46,7 @@ export class ChatMessageResponseDto {
     checkOut?: string;
   };
 
-  @ApiPropertyOptional({ description: 'Suggested quick actions', type: [String] })
+  @ApiPropertyOptional({ description: 'Suggested quick actions', type: [String], example: ['View Rooms', 'Check Availability', 'Make a Booking'] })
   suggestedActions?: string[];
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
@@ -51,50 +54,50 @@ export class ChatMessageResponseDto {
 }
 
 export class ConversationHistoryDto {
-  @ApiProperty({ description: 'Session ID' })
+  @ApiProperty({ description: 'Session ID', example: 'session-abc-123' })
   @IsString()
   @IsNotEmpty()
   sessionId: string;
 }
 
 export class MessageDto {
-  @ApiProperty()
+  @ApiProperty({ example: '880e8400-e29b-41d4-a716-446655440003' })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'user' })
   role: 'user' | 'assistant';
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Hi! What rooms do you have available?' })
   content: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'room_inquiry' })
   intent?: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T12:00:00.000Z' })
   createdAt: Date;
 }
 
 export class ConversationResponseDto {
-  @ApiProperty()
+  @ApiProperty({ example: '990e8400-e29b-41d4-a716-446655440004' })
   conversationId: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'session-abc-123' })
   sessionId: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: '660e8400-e29b-41d4-a716-446655440001' })
   hotelId: string;
 
   @ApiProperty({ type: [MessageDto] })
   messages: MessageDto[];
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: { step: 'greeting' } })
   bookingState?: {
     step: string;
   };
 
-  @ApiProperty()
+  @ApiProperty({ example: '2026-02-28T12:00:00.000Z' })
   startedAt: Date;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: null })
   endedAt?: Date;
 }

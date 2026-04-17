@@ -11,6 +11,7 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  jobTitle?: string;
   status: UserStatus;
   mfaEnabled: boolean;
   lastLoginAt?: Date;
@@ -24,12 +25,14 @@ export interface CreateUserDto {
   name: string;
   role: UserRole;
   hotelId?: string;
+  jobTitle?: string;
 }
 
 export interface UpdateUserDto {
   name?: string;
   email?: string;
   role?: UserRole;
+  jobTitle?: string;
   status?: UserStatus;
 }
 

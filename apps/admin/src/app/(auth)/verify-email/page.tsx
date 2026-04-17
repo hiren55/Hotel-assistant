@@ -1,17 +1,16 @@
 'use client';
 
-import { Suspense, useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/lib/auth-store';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
     resendVerificationEmail,
-    verifyEmailToken,
     isLoading,
     error,
     message,
@@ -19,170 +18,38 @@ function VerifyEmailContent() {
     isEmailVerified,
     clearError,
     clearMessage,
-    initializeAuth,
   } = useAuthStore();
 
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [status, setStatus] = useState<'pending' | 'verifying' | 'success' | 'error'>('pending');
   const [localError, setLocalError] = useState<string | null>(null);
-  const hashProcessedRef = useRef(false);
 
-  // Helper function to clear hash from URL without breaking Next.js
-  const clearHashFromUrl = () => {
-    // Use a timeout to avoid conflicts with Next.js router
-    setTimeout(() => {
-      if (typeof window !== 'undefined' && window.location.hash) {
-        // Replace with clean URL using native history (after React render cycle)
-        const cleanUrl = window.location.pathname + window.location.search;
-        window.history.replaceState(window.history.state, '', cleanUrl);
-      }
-    }, 0);
-  };
-
-  // Handle hash-based redirect from Supabase email confirmation
+  // Handle token-based verification from email link
   useEffect(() => {
-    const handleHashRedirect = async () => {
-      // Only run on client-side and only once
-      if (typeof window === 'undefined' || hashProcessedRef.current) return;
+    const handleVerification = async () => {
+      const token = searchParams.get('token');
+      if (!token) return;
 
-      const hash = window.location.hash;
-      if (!hash || hash === '#') return;
-
-      hashProcessedRef.current = true;
       setStatus('verifying');
 
       try {
-        // Parse hash fragment - Supabase sends tokens in hash
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const type = hashParams.get('type');
-        const errorParam = hashParams.get('error');
-        const errorDescription = hashParams.get('error_description');
+        // Call backend to verify the token
+        await api.get(`/auth/verify-email?token=${encodeURIComponent(token)}`);
+        setStatus('success');
 
-        // Handle error in hash
-        if (errorParam) {
-          setStatus('error');
-          setLocalError(errorDescription || errorParam);
-          clearHashFromUrl();
-          return;
-        }
-
-        // If we have tokens in the hash, set the session
-        if (accessToken && refreshToken) {
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          if (sessionError) {
-            console.error('Session error:', sessionError);
-            setStatus('error');
-            setLocalError(sessionError.message);
-            clearHashFromUrl();
-            return;
-          }
-
-          // Check if email is verified
-          if (data.user?.email_confirmed_at) {
-            clearHashFromUrl();
-
-            // Try to sync with backend using verifyEmailToken
-            const result = await verifyEmailToken();
-
-            if (result.success) {
-              // Check if authentication was successful
-              const authState = useAuthStore.getState();
-              if (authState.isAuthenticated && authState.isEmailVerified) {
-                setStatus('success');
-                // Redirect to dashboard
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              } else {
-                // Backend sync incomplete but email verified - show success and redirect
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              }
-            } else {
-              // verifyEmailToken failed - try initializeAuth
-              await initializeAuth();
-              const authState = useAuthStore.getState();
-
-              if (authState.isAuthenticated && authState.isEmailVerified) {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              } else {
-                // Backend sync failed - email verified but need to login
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/login');
-                }, 1500);
-              }
-            }
-          } else {
-            setStatus('error');
-            setLocalError('Email verification incomplete. Please try again.');
-            clearHashFromUrl();
-          }
-        } else if (type === 'signup' || type === 'email') {
-          // Token exchange might be needed - try to get session
-          const { data: { session } } = await supabase.auth.getSession();
-
-          if (session?.user?.email_confirmed_at) {
-            // Try verifyEmailToken first
-            const result = await verifyEmailToken();
-            clearHashFromUrl();
-
-            if (result.success) {
-              const authState = useAuthStore.getState();
-              if (authState.isAuthenticated && authState.isEmailVerified) {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              } else {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/login');
-                }, 1500);
-              }
-            } else {
-              // Try initializeAuth as fallback
-              await initializeAuth();
-              const authState = useAuthStore.getState();
-              if (authState.isAuthenticated && authState.isEmailVerified) {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              } else {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/login');
-                }, 1500);
-              }
-            }
-          } else {
-            // Clear hash and show pending state
-            clearHashFromUrl();
-            setStatus('pending');
-          }
-        }
+        // Redirect to login after success
+        setTimeout(() => {
+          router.push('/login');
+        }, 2000);
       } catch (err) {
-        console.error('Hash redirect error:', err);
+        console.error('Email verification error:', err);
         setStatus('error');
-        setLocalError('Failed to verify email. Please try again.');
-        clearHashFromUrl();
+        setLocalError(err instanceof Error ? err.message : 'Verification failed. The link may be expired.');
       }
     };
 
-    handleHashRedirect();
-  }, [router, initializeAuth, verifyEmailToken]);
+    handleVerification();
+  }, [searchParams, router]);
 
   // Check if user is already verified and redirect
   useEffect(() => {
@@ -190,80 +57,6 @@ function VerifyEmailContent() {
       router.push('/dashboard');
     }
   }, [isAuthenticated, isEmailVerified, router]);
-
-  // Handle verification if coming from email link (via callback with query params)
-  // This runs only if there's no hash tokens (hash handling takes precedence)
-  useEffect(() => {
-    const handleVerifiedParam = async () => {
-      // Skip if hash tokens are present - hash handler will take care of it
-      const hash = typeof window !== 'undefined' ? window.location.hash : '';
-      if (hash && hash !== '#' && hash.includes('access_token')) {
-        return; // Let hash handler process this
-      }
-
-      const verified = searchParams.get('verified');
-
-      if (verified === 'true') {
-        setStatus('verifying');
-
-        try {
-          // Initialize auth to sync session from callback
-          await initializeAuth();
-
-          // Check auth state after initialization
-          const authState = useAuthStore.getState();
-
-          if (authState.isAuthenticated && authState.isEmailVerified) {
-            setStatus('success');
-            // Redirect to dashboard after short delay
-            setTimeout(() => {
-              router.push('/dashboard');
-            }, 1500);
-          } else {
-            // Try to get session and sync manually
-            const { data: { session } } = await supabase.auth.getSession();
-
-            if (session?.user?.email_confirmed_at) {
-              // Session exists, try verifyEmailToken flow
-              const result = await verifyEmailToken();
-
-              if (result.success) {
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/dashboard');
-                }, 1500);
-              } else {
-                // Verification succeeded but backend sync failed
-                // Redirect to login
-                setStatus('success');
-                setTimeout(() => {
-                  router.push('/login');
-                }, 1500);
-              }
-            } else {
-              // No session - user needs to login
-              setStatus('success');
-              setTimeout(() => {
-                router.push('/login');
-              }, 1500);
-            }
-          }
-        } catch (err) {
-          console.error('Verification sync error:', err);
-          setStatus('success');
-          // Still redirect to login as email was verified
-          setTimeout(() => {
-            router.push('/login');
-          }, 1500);
-        }
-      } else if (verified === 'false') {
-        setStatus('error');
-        setLocalError(searchParams.get('error') || 'Verification failed');
-      }
-    };
-
-    handleVerifiedParam();
-  }, [searchParams, router, initializeAuth, verifyEmailToken]);
 
   const handleResendVerification = async () => {
     if (!email) {
@@ -283,7 +76,7 @@ function VerifyEmailContent() {
 
   const displayError = localError || error;
 
-  // Verifying state (processing hash redirect)
+  // Verifying state
   if (status === 'verifying') {
     return (
       <div className="text-center">
@@ -312,12 +105,12 @@ function VerifyEmailContent() {
             Email verified!
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Your email has been verified successfully. Redirecting to dashboard...
+            Your email has been verified successfully. Redirecting to login...
           </p>
         </div>
         <div className="mt-8 text-center">
-          <Link href="/dashboard" className="font-medium text-primary hover:text-primary/90">
-            Go to dashboard
+          <Link href="/login" className="font-medium text-primary hover:text-primary/90">
+            Go to login
           </Link>
         </div>
       </div>

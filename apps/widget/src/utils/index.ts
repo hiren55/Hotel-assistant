@@ -7,6 +7,9 @@ export function sanitizeHTML(str: string): string {
 
 // Format timestamp for display
 export function formatTime(date: Date): string {
+  if (!date || isNaN(date.getTime())) {
+    return '';
+  }
   return new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',

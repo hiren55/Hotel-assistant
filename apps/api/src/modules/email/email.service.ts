@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -39,24 +40,47 @@ export class EmailService {
   private readonly apiKey: string;
   private readonly defaultFrom: string;
   private readonly isEnabled: boolean;
+  private transporter: nodemailer.Transporter | null = null;
+  private readonly isSmtp: boolean;
 
   constructor(
     private configService: ConfigService,
     private templateService: EmailTemplateService,
     private prisma: PrismaService,
   ) {
+    const provider = this.configService.get<string>('email.provider') || 'resend';
     this.apiKey = this.configService.get<string>('email.resend.apiKey') || '';
     this.defaultFrom =
       this.configService.get<string>('email.from') || 'noreply@hotelassistant.com';
-    this.isEnabled = !!this.apiKey;
+    
+    // Check SMTP config
+    const smtpUser = this.configService.get<string>('email.smtp.user');
+    const smtpPass = this.configService.get<string>('email.smtp.pass');
+    
+    this.isSmtp = provider === 'smtp' || !!(smtpUser && smtpPass);
+    this.isEnabled = this.isSmtp || !!this.apiKey;
 
-    if (!this.isEnabled) {
-      this.logger.warn('Email service is disabled - no API key configured');
+    if (this.isSmtp && smtpUser && smtpPass) {
+      this.transporter = nodemailer.createTransport({
+        host: this.configService.get<string>('email.smtp.host') || 'smtp.gmail.com',
+        port: this.configService.get<number>('email.smtp.port') || 587,
+        secure: this.configService.get<boolean>('email.smtp.secure') || false,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+      this.logger.log('Email service initialized with SMTP (Nodemailer)');
+    } else if (this.apiKey) {
+      this.logger.log('Email service initialized with Resend API');
+    } else {
+      this.logger.warn('Email service is disabled - no API key or SMTP configured');
     }
   }
 
   async send(options: SendEmailOptions): Promise<EmailResult> {
     const recipients = Array.isArray(options.to) ? options.to : [options.to];
+    const cleanSubject = options.subject.replace(/\r?\n|\r/g, ' ').trim();
 
     // Create email log entry
     let logId: string | undefined;
@@ -67,7 +91,7 @@ export class EmailService {
             hotelId: options.hotelId,
             template: options.template || 'custom',
             recipient: recipients.join(', '),
-            subject: options.subject.substring(0, 500),
+            subject: cleanSubject.substring(0, 500),
             status: EmailStatus.queued,
           },
         });
@@ -82,7 +106,7 @@ export class EmailService {
     if (!this.isEnabled) {
       this.logger.warn('Email not sent - service disabled', {
         to: options.to,
-        subject: options.subject,
+        subject: cleanSubject,
       });
       await this.updateEmailLog(logId, {
         status: EmailStatus.failed,
@@ -92,62 +116,80 @@ export class EmailService {
     }
 
     try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
+      let messageId = '';
+      
+      if (this.isSmtp && this.transporter) {
+        // Send using Nodemailer
+        const info = await this.transporter.sendMail({
           from: options.from || this.defaultFrom,
           to: recipients,
-          subject: options.subject,
+          subject: cleanSubject,
           html: options.html,
           text: options.text,
-          reply_to: options.replyTo,
-        }),
-      });
+          replyTo: options.replyTo,
+        });
+        messageId = info.messageId;
+      } else {
+        // Send using Resend API fallback
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            from: options.from || this.defaultFrom,
+            to: recipients,
+            subject: cleanSubject,
+            html: options.html,
+            text: options.text,
+            reply_to: options.replyTo,
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        const errorMessage = (errorData.message as string) || `HTTP ${response.status}`;
-        this.logger.error('Failed to send email', {
-          status: response.status,
-          error: errorData,
-          to: options.to,
-          subject: options.subject,
-        });
-        await this.updateEmailLog(logId, {
-          status: EmailStatus.failed,
-          errorMessage,
-        });
-        return {
-          success: false,
-          error: errorMessage,
-          logId,
-        };
+        if (!response.ok) {
+          const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+          const errorMessage = (errorData.message as string) || `HTTP ${response.status}`;
+          this.logger.error('Failed to send email', {
+            status: response.status,
+            error: errorData,
+            to: options.to,
+            subject: cleanSubject,
+          });
+          await this.updateEmailLog(logId, {
+            status: EmailStatus.failed,
+            errorMessage,
+          });
+          return {
+            success: false,
+            error: errorMessage,
+            logId,
+          };
+        }
+
+        const data = (await response.json()) as { id: string };
+        messageId = data.id;
       }
 
-      const data = (await response.json()) as { id: string };
       this.logger.log('Email sent successfully', {
-        messageId: data.id,
+        messageId: messageId,
         to: options.to,
-        subject: options.subject,
+        subject: cleanSubject,
       });
 
       await this.updateEmailLog(logId, {
         status: EmailStatus.sent,
-        messageId: data.id,
+        messageId: messageId,
         sentAt: new Date(),
       });
 
-      return { success: true, messageId: data.id, logId };
+      return { success: true, messageId: messageId, logId };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error('Email send error', {
         error: errorMessage,
         to: options.to,
-        subject: options.subject,
+        subject: cleanSubject,
       });
       await this.updateEmailLog(logId, {
         status: EmailStatus.failed,

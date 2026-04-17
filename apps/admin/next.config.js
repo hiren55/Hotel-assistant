@@ -5,10 +5,12 @@ const nextConfig = {
   images: {
     domains: ['localhost'],
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**.supabase.co',
-      },
+      // Add your S3/R2 storage domain here when configured
+      // Example for Cloudflare R2:
+      // {
+      //   protocol: 'https',
+      //   hostname: '**.r2.cloudflarestorage.com',
+      // },
     ],
   },
   // Enable experimental features for better performance

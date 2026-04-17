@@ -7,6 +7,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -22,11 +23,15 @@ import {
 } from './dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { Throttle } from '@nestjs/throttler';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @ApiTags('chat')
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly prisma: PrismaService,
+  ) { }
 
   @Public()
   @Post(':hotelId/message')
@@ -56,11 +61,11 @@ export class ChatController {
       intent: response.intent,
       bookingState: response.bookingState
         ? {
-            step: response.bookingState.step,
-            roomId: response.bookingState.roomId,
-            checkIn: response.bookingState.checkIn,
-            checkOut: response.bookingState.checkOut,
-          }
+          step: response.bookingState.step,
+          roomId: response.bookingState.roomId,
+          checkIn: response.bookingState.checkIn,
+          checkOut: response.bookingState.checkOut,
+        }
         : undefined,
       suggestedActions: response.suggestedActions,
       metadata: response.metadata,
@@ -103,14 +108,65 @@ export class ChatController {
     return { message: 'Conversation ended successfully' };
   }
 
+  @Public()
+  @Get(':hotelId/rooms')
+  @ApiOperation({ summary: 'Get available rooms for the widget' })
+  @ApiParam({ name: 'hotelId', description: 'Hotel ID or slug' })
+  @ApiResponse({ status: 200, description: 'List of rooms' })
+  async getRooms(
+    @Param('hotelId') hotelId: string,
+  ): Promise<{ rooms: any[] }> {
+    const resolvedHotelId = await this.resolveHotelId(hotelId);
+    const rooms = await this.chatService.getAvailableRooms(resolvedHotelId);
+    return { rooms };
+  }
+
   private async resolveHotelId(hotelIdOrSlug: string): Promise<string> {
     // If it looks like a UUID, return as-is
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hotelIdOrSlug)) {
       return hotelIdOrSlug;
     }
 
-    // Otherwise, treat as slug - the service will handle the lookup
-    return hotelIdOrSlug;
+    // Otherwise, treat as slug - look up the hotel by slug
+    const hotel = await this.prisma.hotel.findUnique({
+      where: { slug: hotelIdOrSlug },
+      select: { id: true },
+    });
+
+    if (!hotel) {
+      throw new NotFoundException(`Hotel with slug '${hotelIdOrSlug}' not found`);
+    }
+
+    return hotel.id;
+  }
+
+  @Public()
+  @Get(':hotelId/branding')
+  @ApiOperation({ summary: 'Get hotel branding configuration for widget' })
+  @ApiParam({ name: 'hotelId', description: 'Hotel ID or slug' })
+  @ApiResponse({ status: 200, description: 'Hotel branding data' })
+  async getBranding(@Param('hotelId') hotelIdOrSlug: string) {
+    const resolvedHotelId = await this.resolveHotelId(hotelIdOrSlug);
+    
+    // Look up the hotel's branding
+    const hotel = await this.prisma.hotel.findUnique({
+      where: { id: resolvedHotelId },
+      select: { name: true, branding: true }
+    });
+
+    if (!hotel) {
+      throw new NotFoundException('Hotel not found');
+    }
+
+    const branding = (hotel.branding as Record<string, any>) || {};
+    
+    return {
+      hotelName: hotel.name,
+      welcomeMessage: branding.welcomeMessage || 'Hello! How can I help you today?',
+      primaryColor: branding.primaryColor,
+      secondaryColor: branding.secondaryColor,
+      logoUrl: branding.logoUrl,
+    };
   }
 
   private async getConversationWithMessages(

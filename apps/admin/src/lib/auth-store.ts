@@ -2,7 +2,6 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { supabase } from './supabase';
 import { api, User, Tokens, RegisterHotelRequest } from './api';
 
 // ============================================
@@ -19,6 +18,7 @@ export interface ForgotPasswordRequest {
 }
 
 export interface ResetPasswordRequest {
+  token: string;
   password: string;
   confirmPassword: string;
 }
@@ -136,64 +136,69 @@ export const useAuthStore = create<AuthState>()(
             return;
           }
 
-          const { data: { session }, error } = await supabase.auth.getSession();
+          // Check if we have stored tokens
+          const storedToken = typeof window !== 'undefined'
+            ? localStorage.getItem('accessToken')
+            : null;
 
-          if (error) {
-            console.error('Error getting session:', error);
-            set({ isInitialized: true });
-            return;
-          }
-
-          if (session?.user) {
-            // Check if email is verified
-            const isVerified = session.user.email_confirmed_at !== null;
-
-            if (!isVerified) {
-              // User has session but email not verified - clear session
-              await supabase.auth.signOut();
-              set({
-                user: null,
-                tokens: null,
-                isAuthenticated: false,
-                isEmailVerified: false,
-                isInitialized: true,
-              });
-              return;
-            }
-
-            // Email is verified, set up authenticated state
-            api.setAccessToken(session.access_token);
+          if (storedToken) {
+            api.setAccessToken(storedToken);
 
             try {
-              // Fetch user data from backend
-              const response = await api.get<{ data: User }>('/auth/me');
+              // Verify token by fetching user
+              const userResponse = await api.get<User>('/auth/me');
               set({
-                user: response.data,
-                tokens: {
-                  accessToken: session.access_token,
-                  refreshToken: session.refresh_token,
-                  expiresIn: session.expires_in || 3600,
-                  tokenType: 'Bearer',
-                },
+                user: userResponse,
                 isAuthenticated: true,
                 isEmailVerified: true,
                 isInitialized: true,
               });
             } catch {
-              // Backend user fetch failed - user needs to login properly
-              // This can happen after email verification when backend record wasn't synced
-              console.log('Backend user not found, redirecting to login...');
+              // Token invalid or expired - try refreshing
+              const storedRefreshToken = localStorage.getItem('refreshToken');
+              if (storedRefreshToken) {
+                try {
+                  const refreshResponse = await api.post<Tokens>('/auth/refresh', {
+                    refreshToken: storedRefreshToken,
+                  });
 
-              // Sign out and let user login with credentials
-              await supabase.auth.signOut();
-              set({
-                user: null,
-                tokens: null,
-                isAuthenticated: false,
-                isEmailVerified: false,
-                isInitialized: true,
-                message: 'Email verified! Please login to continue.',
-              });
+                  api.setAccessToken(refreshResponse.accessToken);
+                  localStorage.setItem('accessToken', refreshResponse.accessToken);
+                  localStorage.setItem('refreshToken', refreshResponse.refreshToken);
+
+                  const userResponse = await api.get<User>('/auth/me');
+                  set({
+                    user: userResponse,
+                    tokens: refreshResponse,
+                    isAuthenticated: true,
+                    isEmailVerified: true,
+                    isInitialized: true,
+                  });
+                } catch {
+                  // Refresh failed - clear everything
+                  api.setAccessToken(null);
+                  localStorage.removeItem('accessToken');
+                  localStorage.removeItem('refreshToken');
+                  set({
+                    user: null,
+                    tokens: null,
+                    isAuthenticated: false,
+                    isEmailVerified: false,
+                    isInitialized: true,
+                  });
+                }
+              } else {
+                // No refresh token - clear
+                api.setAccessToken(null);
+                localStorage.removeItem('accessToken');
+                set({
+                  user: null,
+                  tokens: null,
+                  isAuthenticated: false,
+                  isEmailVerified: false,
+                  isInitialized: true,
+                });
+              }
             }
           } else {
             set({ isInitialized: true });
@@ -205,7 +210,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // ============================================
-      // REGISTER - No session until email verified
+      // REGISTER
       // ============================================
       register: async (data: RegisterHotelRequest): Promise<AuthResult> => {
         set({ isLoading: true, error: null, message: null });
@@ -227,7 +232,7 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: passwordValidation.error };
           }
 
-          // SECURITY: Pre-check if email already exists in backend before Supabase signup
+          // Pre-check if email already exists
           try {
             const checkResponse = await api.get<{ exists: boolean; verified: boolean } | null>(
               `/auth/check-email?email=${encodeURIComponent(normalizedEmail)}`
@@ -235,158 +240,61 @@ export const useAuthStore = create<AuthState>()(
 
             if (checkResponse && checkResponse.exists) {
               const errorMsg = 'This email is already registered. Please login instead.';
-              set({
-                isLoading: false,
-                error: errorMsg,
-              });
-              return {
-                success: false,
-                error: errorMsg,
-              };
+              set({ isLoading: false, error: errorMsg });
+              return { success: false, error: errorMsg };
             }
           } catch {
-            // If check fails, continue with registration (Supabase will catch duplicates)
+            // If check fails, continue with registration
             console.log('Email pre-check failed, continuing with registration');
           }
 
-          // Check if user already exists in Supabase
-          // We'll try to sign up and handle the error if user exists
-          const { data: authData, error: authError } = await supabase.auth.signUp({
+          // Register via backend API
+          const response = await api.post<{ user: User; tokens: Tokens }>('/auth/register/hotel', {
             email: normalizedEmail,
             password: data.password,
-            options: {
-              data: {
-                name: data.name,
-                hotelName: data.hotelName,
-              },
-              emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=/dashboard`,
-            },
+            name: data.name,
+            hotelName: data.hotelName,
+            hotelSlug: data.hotelSlug,
           });
 
-          if (authError) {
-            // Handle user already exists - check multiple variations of the error message
-            const errorLower = authError.message.toLowerCase();
-            if (
-              errorLower.includes('already registered') ||
-              errorLower.includes('already been registered') ||
-              errorLower.includes('user already exists') ||
-              errorLower.includes('email already') ||
-              errorLower.includes('duplicate') ||
-              errorLower.includes('already in use')
-            ) {
-              const duplicateError = 'This email is already registered. Please login or use forgot password.';
-              set({
-                isLoading: false,
-                error: duplicateError,
-              });
-              return {
-                success: false,
-                error: duplicateError,
-              };
-            }
-            throw new Error(authError.message);
+          // Set tokens and user
+          api.setAccessToken(response.tokens.accessToken);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('accessToken', response.tokens.accessToken);
+            localStorage.setItem('refreshToken', response.tokens.refreshToken);
           }
 
-          // SECURITY: Check if Supabase returned a user but with identities array empty
-          // This can happen when email already exists but confirmation is pending
-          if (authData.user && authData.user.identities && authData.user.identities.length === 0) {
-            const duplicateError = 'This email is already registered. Please login or check your email for verification.';
-            set({
-              isLoading: false,
-              error: duplicateError,
-            });
-            return {
-              success: false,
-              error: duplicateError,
-            };
-          }
+          set({
+            user: response.user,
+            tokens: response.tokens,
+            loginTimestamp: Date.now(),
+            isAuthenticated: true,
+            isEmailVerified: true,
+            isLoading: false,
+            error: null,
+            message: 'Registration successful! Welcome to Hotel Assistant.',
+          });
 
-          // Check if user was created but needs verification
-          // Supabase returns user but no session when email confirmation is required
-          if (authData.user && !authData.session) {
-            // User created, needs email verification
-            // Also create record in our backend (pending verification status)
-            try {
-              await api.post('/auth/register/hotel', {
-                email: normalizedEmail,
-                password: data.password,
-                name: data.name,
-                hotelName: data.hotelName,
-                hotelSlug: data.hotelSlug,
-                supabaseUserId: authData.user.id,
-                pendingEmailVerification: true,
-              });
-            } catch (backendError) {
-              console.warn('Backend pre-registration:', backendError);
-              // Continue anyway - user will be synced on first login after verification
-            }
-
-            set({
-              isLoading: false,
-              message: 'Registration successful! Please check your email to verify your account.',
-              error: null,
-            });
-
-            return {
-              success: true,
-              requiresEmailVerification: true,
-              message: 'Please check your email to verify your account before logging in.',
-            };
-          }
-
-          // If Supabase returned a session (email confirmation disabled)
-          // We still don't allow access - sign out and require verification
-          if (authData.session) {
-            // Sign out immediately - we require email verification
-            await supabase.auth.signOut();
-
-            // Create backend record
-            try {
-              await api.post('/auth/register/hotel', {
-                email: normalizedEmail,
-                password: data.password,
-                name: data.name,
-                hotelName: data.hotelName,
-                hotelSlug: data.hotelSlug,
-                supabaseUserId: authData.user?.id,
-                pendingEmailVerification: true,
-              });
-            } catch (backendError) {
-              console.warn('Backend pre-registration:', backendError);
-            }
-
-            // Manually send verification email since Supabase auto-confirmed
-            await supabase.auth.resend({
-              type: 'signup',
-              email: normalizedEmail,
-              options: {
-                emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=/dashboard`,
-              },
-            });
-
-            set({
-              isLoading: false,
-              message: 'Registration successful! Please check your email to verify your account.',
-              error: null,
-            });
-
-            return {
-              success: true,
-              requiresEmailVerification: true,
-              message: 'Please check your email to verify your account before logging in.',
-            };
-          }
-
-          throw new Error('Unexpected registration state');
+          return {
+            success: true,
+            message: 'Registration successful!',
+          };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Registration failed';
+          // Handle specific error cases
+          const errStr = errorMessage.toLowerCase();
+          if (errStr.includes('already registered') || errStr.includes('conflict') || errStr.includes('already exists')) {
+            const duplicateError = 'This email is already registered. Please login or use forgot password.';
+            set({ isLoading: false, error: duplicateError });
+            return { success: false, error: duplicateError };
+          }
           set({ isLoading: false, error: errorMessage });
           return { success: false, error: errorMessage };
         }
       },
 
       // ============================================
-      // LOGIN - Only allow verified users
+      // LOGIN
       // ============================================
       login: async (data: LoginRequest): Promise<AuthResult> => {
         set({ isLoading: true, error: null, message: null });
@@ -401,162 +309,60 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: emailValidation.error };
           }
 
-          // Attempt to sign in with Supabase
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          // Login via backend API
+          const response = await api.post<{ user: User; tokens: Tokens }>('/auth/login', {
             email: normalizedEmail,
             password: data.password,
           });
 
-          if (authError) {
-            console.error('Login error:', authError.message);
-
-            // Handle email not confirmed
-            if (authError.message.includes('Email not confirmed')) {
-              // Resend verification email
-              await supabase.auth.resend({
-                type: 'signup',
-                email: normalizedEmail,
-                options: {
-                  emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=/dashboard`,
-                },
-              });
-
-              set({
-                isLoading: false,
-                error: 'Please verify your email before logging in. A new verification email has been sent.',
-              });
-
-              return {
-                success: false,
-                requiresEmailVerification: true,
-                error: 'Please verify your email before logging in. A new verification email has been sent.',
-              };
-            }
-
-            // Handle invalid credentials
-            if (authError.message.includes('Invalid login credentials')) {
-              set({
-                isLoading: false,
-                error: 'Invalid email or password. Please check your credentials.',
-              });
-              return { success: false, error: 'Invalid email or password.' };
-            }
-
-            throw new Error(authError.message);
+          // Set tokens
+          api.setAccessToken(response.tokens.accessToken);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('accessToken', response.tokens.accessToken);
+            localStorage.setItem('refreshToken', response.tokens.refreshToken);
           }
 
-          if (!authData.session || !authData.user) {
-            throw new Error('Login failed - no session returned');
-          }
+          set({
+            user: response.user,
+            tokens: response.tokens,
+            loginTimestamp: Date.now(),
+            isAuthenticated: true,
+            isEmailVerified: true,
+            isLoading: false,
+            error: null,
+          });
 
-          // Double-check email verification status
-          if (!authData.user.email_confirmed_at) {
-            // Email not verified - sign out and send verification
-            await supabase.auth.signOut();
-
-            await supabase.auth.resend({
-              type: 'signup',
-              email: normalizedEmail,
-              options: {
-                emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=/dashboard`,
-              },
-            });
-
-            set({
-              isLoading: false,
-              error: 'Please verify your email before logging in. A verification email has been sent.',
-            });
-
-            return {
-              success: false,
-              requiresEmailVerification: true,
-              error: 'Please verify your email before logging in.',
-            };
-          }
-
-          // Email is verified - proceed with login
-          api.setAccessToken(authData.session.access_token);
-
-          // Fetch/sync user from backend
-          try {
-            const response = await api.get<{ data: User }>('/auth/me');
-
-            set({
-              user: response.data,
-              tokens: {
-                accessToken: authData.session.access_token,
-                refreshToken: authData.session.refresh_token,
-                expiresIn: authData.session.expires_in || 3600,
-                tokenType: 'Bearer',
-              },
-              loginTimestamp: Date.now(), // Set login timestamp for 12-hour auto-logout
-              isAuthenticated: true,
-              isEmailVerified: true,
-              isLoading: false,
-              error: null,
-            });
-
-            return { success: true };
-          } catch {
-            // Backend fetch failed - try to sync user
-            // This can happen if user verified email but backend record wasn't created
-            try {
-              // Call backend login to sync/create user
-              const loginResponse = await api.post<{ user: User; tokens: Tokens }>('/auth/login', {
-                email: normalizedEmail,
-                password: data.password,
-              });
-
-              // Set the token from backend login response before calling /auth/me
-              if (loginResponse.tokens?.accessToken) {
-                api.setAccessToken(loginResponse.tokens.accessToken);
-              }
-
-              // Now fetch user with the correct token
-              const response = await api.get<{ data: User }>('/auth/me');
-
-              set({
-                user: response.data,
-                tokens: loginResponse.tokens || {
-                  accessToken: authData.session.access_token,
-                  refreshToken: authData.session.refresh_token,
-                  expiresIn: authData.session.expires_in || 3600,
-                  tokenType: 'Bearer',
-                },
-                loginTimestamp: Date.now(), // Set login timestamp for 12-hour auto-logout
-                isAuthenticated: true,
-                isEmailVerified: true,
-                isLoading: false,
-                error: null,
-              });
-
-              return { success: true };
-            } catch (syncError) {
-              console.error('User sync failed:', syncError);
-              await supabase.auth.signOut();
-              set({
-                isLoading: false,
-                error: 'Login failed. Please try again or contact support.',
-              });
-              return { success: false, error: 'Login failed. Please try again.' };
-            }
-          }
+          return { success: true };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Login failed';
+
+          // Handle specific error cases
+          if (errorMessage.toLowerCase().includes('invalid credentials') ||
+            errorMessage.toLowerCase().includes('unauthorized')) {
+            set({
+              isLoading: false,
+              error: 'Invalid email or password. Please check your credentials.',
+            });
+            return { success: false, error: 'Invalid email or password.' };
+          }
+
+          if (errorMessage.toLowerCase().includes('not active')) {
+            set({
+              isLoading: false,
+              error: 'Your account is not active. Please verify your email or contact support.',
+            });
+            return { success: false, error: 'Account is not active.' };
+          }
+
           set({ isLoading: false, error: errorMessage });
           return { success: false, error: errorMessage };
         }
       },
 
       // ============================================
-      // LOGOUT - Complete session cleanup with backend invalidation
+      // LOGOUT
       // ============================================
       logout: async () => {
-        // Set flag to prevent recursive logout from onAuthStateChange listener
-        if (typeof window !== 'undefined') {
-          (window as any).__isLoggingOut = true;
-        }
-
         // Get the current token before clearing state
         const currentToken = api.getAccessToken();
 
@@ -576,14 +382,13 @@ export const useAuthStore = create<AuthState>()(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('auth-storage');
           sessionStorage.clear();
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
         }
 
-        // Now do the async cleanup in background (don't block UI)
-        // These calls happen after state is already cleared
+        // Now do the async cleanup in background
         try {
-          // Call backend logout endpoint to invalidate tokens on server
           if (currentToken) {
-            // Temporarily restore token just for the logout API call
             api.setAccessToken(currentToken);
             try {
               await api.post('/auth/logout');
@@ -592,20 +397,8 @@ export const useAuthStore = create<AuthState>()(
             }
             api.setAccessToken(null);
           }
-
-          // Sign out from Supabase (invalidates all sessions)
-          try {
-            await supabase.auth.signOut({ scope: 'global' });
-          } catch (signOutError) {
-            console.warn('Supabase signOut error:', signOutError);
-          }
         } catch (error) {
           console.error('Logout error:', error);
-        } finally {
-          // Reset the flag
-          if (typeof window !== 'undefined') {
-            (window as any).__isLoggingOut = false;
-          }
         }
       },
 
@@ -624,15 +417,10 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: emailValidation.error };
           }
 
-          // For password reset, redirect directly to reset-password page (not via callback)
-          // This avoids PKCE code_verifier issues when user opens link in different browser/session
-          const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-            redirectTo: `${window.location.origin}/reset-password`,
+          // Call backend forgot-password endpoint
+          await api.post('/auth/forgot-password', {
+            email: normalizedEmail,
           });
-
-          if (error) {
-            throw new Error(error.message);
-          }
 
           set({
             isLoading: false,
@@ -671,40 +459,11 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: passwordValidation.error };
           }
 
-          // Verify we have a valid session before attempting password update
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-
-          if (sessionError || !sessionData.session) {
-            console.error('No valid session for password reset:', sessionError);
-            set({ isLoading: false, error: 'Session expired. Please request a new password reset link.' });
-            return { success: false, error: 'Session expired. Please request a new password reset link.' };
-          }
-
-          console.log('Updating password for user:', sessionData.session.user?.email);
-
-          // Update password in Supabase
-          const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+          // Call backend reset-password endpoint
+          await api.post('/auth/reset-password', {
+            token: data.token,
             password: data.password,
           });
-
-          if (updateError) {
-            console.error('Password update error:', updateError);
-            // Handle specific error cases
-            if (updateError.message.includes('same password')) {
-              set({ isLoading: false, error: 'New password must be different from current password.' });
-              return { success: false, error: 'New password must be different from current password.' };
-            }
-            throw new Error(updateError.message);
-          }
-
-          if (!updateData.user) {
-            throw new Error('Password update failed. Please try again.');
-          }
-
-          console.log('Password updated successfully for:', updateData.user.email);
-
-          // Sign out to invalidate all sessions (security best practice)
-          await supabase.auth.signOut({ scope: 'global' });
 
           // Clear local state
           api.setAccessToken(null);
@@ -712,6 +471,8 @@ export const useAuthStore = create<AuthState>()(
           // Clear persisted storage
           if (typeof window !== 'undefined') {
             localStorage.removeItem('auth-storage');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
           }
 
           set({
@@ -739,23 +500,12 @@ export const useAuthStore = create<AuthState>()(
       // ============================================
       // RESEND VERIFICATION EMAIL
       // ============================================
-      resendVerificationEmail: async (email: string): Promise<AuthResult> => {
+      resendVerificationEmail: async (_email: string): Promise<AuthResult> => {
         set({ isLoading: true, error: null, message: null });
 
         try {
-          const normalizedEmail = normalizeEmail(email);
-
-          const { error } = await supabase.auth.resend({
-            type: 'signup',
-            email: normalizedEmail,
-            options: {
-              emailRedirectTo: `${window.location.origin}/auth/callback?type=signup&next=/dashboard`,
-            },
-          });
-
-          if (error) {
-            throw new Error(error.message);
-          }
+          // Call backend endpoint (requires authenticated user)
+          await api.post('/auth/request-verification');
 
           set({
             isLoading: false,
@@ -775,142 +525,75 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // ============================================
-      // VERIFY EMAIL TOKEN (called from callback)
+      // VERIFY EMAIL TOKEN (called from verify-email page)
       // ============================================
       verifyEmailToken: async (): Promise<AuthResult> => {
         set({ isLoading: true, error: null, message: null });
 
         try {
-          // Get current session after callback redirect
-          const { data: { session }, error } = await supabase.auth.getSession();
+          // Get token from URL query params
+          const urlParams = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search)
+            : null;
+          const token = urlParams?.get('token');
 
-          if (error || !session?.user) {
-            throw new Error('Invalid or expired verification link');
+          if (!token) {
+            set({ isLoading: false, error: 'No verification token found.' });
+            return { success: false, error: 'No verification token found.' };
           }
 
-          // Verify email is now confirmed
-          if (!session.user.email_confirmed_at) {
-            throw new Error('Email verification failed');
-          }
+          // Call backend verify endpoint
+          await api.get(`/auth/verify-email?token=${encodeURIComponent(token)}`);
 
-          // Set up authenticated state
-          api.setAccessToken(session.access_token);
+          set({
+            isLoading: false,
+            message: 'Email verified successfully! Please login to continue.',
+            error: null,
+          });
 
-          // Sync with backend
-          try {
-            const response = await api.get<{ data: User }>('/auth/me');
-
-            set({
-              user: response.data,
-              tokens: {
-                accessToken: session.access_token,
-                refreshToken: session.refresh_token,
-                expiresIn: session.expires_in || 3600,
-                tokenType: 'Bearer',
-              },
-              loginTimestamp: Date.now(), // Set login timestamp for 12-hour auto-logout
-              isAuthenticated: true,
-              isEmailVerified: true,
-              isLoading: false,
-              message: 'Email verified successfully!',
-              error: null,
-            });
-
-            return { success: true, message: 'Email verified successfully!' };
-          } catch {
-            // Try to sync user via login endpoint
-            if (session.user.email) {
-              try {
-                await api.post('/auth/sync-user', {
-                  supabaseUserId: session.user.id,
-                  email: session.user.email,
-                });
-
-                const response = await api.get<{ data: User }>('/auth/me');
-
-                set({
-                  user: response.data,
-                  tokens: {
-                    accessToken: session.access_token,
-                    refreshToken: session.refresh_token,
-                    expiresIn: session.expires_in || 3600,
-                    tokenType: 'Bearer',
-                  },
-                  loginTimestamp: Date.now(), // Set login timestamp for 12-hour auto-logout
-                  isAuthenticated: true,
-                  isEmailVerified: true,
-                  isLoading: false,
-                  message: 'Email verified successfully!',
-                  error: null,
-                });
-
-                return { success: true, message: 'Email verified successfully!' };
-              } catch (syncError) {
-                console.error('User sync failed:', syncError);
-              }
-            }
-
-            // If sync fails, still mark as verified but user needs to login
-            await supabase.auth.signOut();
-            set({
-              isLoading: false,
-              message: 'Email verified! Please login to continue.',
-              error: null,
-            });
-
-            return {
-              success: true,
-              message: 'Email verified! Please login to continue.',
-            };
-          }
+          return {
+            success: true,
+            message: 'Email verified successfully! Please login to continue.',
+          };
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Verification failed';
+          const errorMessage = error instanceof Error ? error.message : 'Email verification failed';
           set({ isLoading: false, error: errorMessage });
           return { success: false, error: errorMessage };
         }
       },
 
       // ============================================
-      // CHECK AUTH STATUS (for protected routes)
+      // CHECK AUTH STATUS
       // ============================================
       checkAuthStatus: async (): Promise<boolean> => {
-        const state = get();
+        try {
+          // Check session expiry
+          if (get().isSessionExpired()) {
+            await get().logout();
+            return false;
+          }
 
-        // Check if session has expired (12-hour limit) - only for authenticated users
-        if (state.isAuthenticated && get().isSessionExpired()) {
-          console.log('Session expired (12-hour limit), forcing logout...');
+          // Try to fetch current user
+          const storedToken = typeof window !== 'undefined'
+            ? localStorage.getItem('accessToken')
+            : null;
+
+          if (!storedToken) {
+            return false;
+          }
+
+          api.setAccessToken(storedToken);
+          await api.get<User>('/auth/me');
+          return true;
+        } catch {
+          // Token invalid
           await get().logout();
           return false;
         }
-
-        // If already authenticated and verified, return true
-        if (state.isAuthenticated && state.isEmailVerified && state.user) {
-          return true;
-        }
-
-        // Check Supabase session
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session?.user) {
-          return false;
-        }
-
-        // Check email verification
-        if (!session.user.email_confirmed_at) {
-          await supabase.auth.signOut();
-          return false;
-        }
-
-        // Re-initialize auth if needed
-        if (!state.isInitialized) {
-          await get().initializeAuth();
-        }
-
-        return get().isAuthenticated && get().isEmailVerified;
       },
 
       // ============================================
-      // UTILITY FUNCTIONS
+      // CLEAR HELPERS
       // ============================================
       clearError: () => set({ error: null }),
       clearMessage: () => set({ message: null }),
@@ -918,7 +601,17 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => {
+        if (typeof window !== 'undefined') {
+          return localStorage;
+        }
+        // SSR fallback
+        return {
+          getItem: () => null,
+          setItem: () => { },
+          removeItem: () => { },
+        };
+      }),
       partialize: (state) => ({
         user: state.user,
         tokens: state.tokens,
@@ -926,73 +619,6 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: state.isAuthenticated,
         isEmailVerified: state.isEmailVerified,
       }),
-      onRehydrateStorage: () => (state) => {
-        if (state?.tokens?.accessToken) {
-          api.setAccessToken(state.tokens.accessToken);
-        }
-      },
-    }
-  )
+    },
+  ),
 );
-
-// ============================================
-// SUPABASE AUTH STATE LISTENER
-// ============================================
-if (typeof window !== 'undefined') {
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    console.log('Global auth state change:', event, session?.user?.email);
-
-    if (event === 'SIGNED_OUT') {
-      // Prevent recursive logout - if logout is already in progress, skip
-      if ((window as any).__isLoggingOut) {
-        console.log('Logout already in progress, skipping recursive call');
-        return;
-      }
-
-      // Only clear state if we're not in the middle of a password reset
-      const isResetPasswordPage = window.location.pathname.includes('reset-password');
-      if (!isResetPasswordPage) {
-        // Clear API token
-        api.setAccessToken(null);
-
-        // Just clear the local state without calling full logout (which would trigger signOut again)
-        useAuthStore.setState({
-          user: null,
-          tokens: null,
-          loginTimestamp: null,
-          isAuthenticated: false,
-          isEmailVerified: false,
-          error: null,
-          message: null,
-        });
-
-        // Clear persisted storage
-        localStorage.removeItem('auth-storage');
-        sessionStorage.clear();
-      }
-    } else if (event === 'PASSWORD_RECOVERY' && session) {
-      // User clicked password reset link - session is valid for password update
-      // Don't set isAuthenticated=true, just allow the password reset flow
-      console.log('Password recovery session detected for:', session.user?.email);
-      api.setAccessToken(session.access_token);
-    } else if (event === 'TOKEN_REFRESHED' && session) {
-      // Update tokens on refresh
-      api.setAccessToken(session.access_token);
-      useAuthStore.setState({
-        tokens: {
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
-          expiresIn: session.expires_in || 3600,
-          tokenType: 'Bearer',
-        },
-      });
-    } else if (event === 'USER_UPDATED' && session) {
-      // Re-check verification status on user update
-      if (session.user.email_confirmed_at) {
-        useAuthStore.setState({ isEmailVerified: true });
-      }
-    }
-  });
-}
-
-export default useAuthStore;
